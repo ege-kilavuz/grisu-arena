@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "GriSu Arena",
+    "slug": "grisu-arena",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0f766e"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "com.egekilavuz.grisuarena"
+    },
+    "ios": {
+      "supportsTablet": true
+    }
+  }
+}
