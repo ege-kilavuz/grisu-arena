@@ -17,8 +17,8 @@ Gri su doğru filtrelenip/arıtıldığında bahçe sulama, rezervuar, temizlik 
 - Top animasyonla potaya gider.
 - Doğru cevap puan, seri ve anında açıklamalı geri bildirim kazandırır.
 - Soru havuzu geniştir; her oyun farklı sorular gelir.
-- Bilgi kartları gri suyun ne olduğunu, riskli durumları ve güvenli kullanım alanlarını açıklar.
-- Oyun sonunda yanlış cevaplar için kısa öğrenme özeti gösterilir.
+- Oyuncu ayrı bir bilgi bölümüne gitmez; öğrenme oyun akışının içinde olur.
+- Oyun sonunda yapılan hatalara göre tek bir hedefli bilgi kartı gösterilir.
 
 ## Teknoloji
 
