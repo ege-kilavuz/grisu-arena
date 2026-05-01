@@ -1,5 +1,5 @@
 import React from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -17,6 +17,35 @@ const GAME_LENGTH = 12;
 
 type Basket = 'yes' | 'no';
 type Screen = 'home' | 'game' | 'result' | 'learn';
+
+type AnswerRecord = {
+  question: Question;
+  choice: Basket;
+  isCorrect: boolean;
+};
+
+const LEARNING_CARDS = [
+  {
+    emoji: '💧',
+    title: 'Gri su nedir?',
+    body: 'Tuvalet dışındaki duş, lavabo ve bazı çamaşır suları gri su olabilir. İçme suyu değildir; kullanım alanı dikkatle seçilir.',
+  },
+  {
+    emoji: '⚠️',
+    title: 'Ne zaman risklidir?',
+    body: 'Çamaşır suyu, ağır kimyasal, boya, yağ, ilaç, dışkı veya idrar karışmış su güvenli gri su kabul edilmez.',
+  },
+  {
+    emoji: '🌱',
+    title: 'Nerede kullanılabilir?',
+    body: 'Doğru filtreleme ve hijyenle süs bitkileri, bahçe sulama, rezervuar veya temizlik gibi içme dışı işlerde değerlendirilebilir.',
+  },
+  {
+    emoji: '🧠',
+    title: 'Amaç yarış değil, öğrenmek',
+    body: 'Puan sadece geri bildirimdir. Asıl hedef güvenli su kullanımı, tasarruf alışkanlığı ve yanlış bilinenleri düzeltmektir.',
+  },
+];
 
 export default function App() {
   return (
@@ -36,6 +65,7 @@ function GameApp() {
   const [streak, setStreak] = React.useState(0);
   const [bestStreak, setBestStreak] = React.useState(0);
   const [feedback, setFeedback] = React.useState('Topu doğru potaya sürükle.');
+  const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
 
   const question = questions[index];
 
@@ -45,6 +75,7 @@ function GameApp() {
     setScore(0);
     setStreak(0);
     setBestStreak(0);
+    setAnswers([]);
     setFeedback('Topu doğru potaya sürükle.');
     setScreen('game');
   }
@@ -53,6 +84,7 @@ function GameApp() {
     const current = questions[index];
     if (!current) {return;}
     const isCorrect = (choice === 'yes') === current.answer;
+    setAnswers((items) => [...items, { question: current, choice, isCorrect }]);
     if (isCorrect) {
       const nextStreak = streak + 1;
       setStreak(nextStreak);
@@ -76,14 +108,14 @@ function GameApp() {
         <View style={styles.hero}>
           <Text style={styles.logo}>🏀💧</Text>
           <Text style={styles.title}>GriSu Arena</Text>
-          <Text style={styles.subtitle}>Soru topunu EVET veya HAYIR potasına at, su bilinci puanlarını topla.</Text>
+          <Text style={styles.subtitle}>Soru topunu EVET veya HAYIR potasına at, gri suyu güvenli ve doğru kullanmayı öğren.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Oyuna Başla</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('learn')}>
             <Text style={styles.secondaryButtonText}>Gri su nedir?</Text>
           </TouchableOpacity>
-          <Text style={styles.smallNote}>50 soruluk havuzdan her oyunda {GAME_LENGTH} farklı soru seçilir.</Text>
+          <Text style={styles.smallNote}>Eğitim odaklıdır: 50 soruluk havuzdan her oyunda {GAME_LENGTH} farklı soru seçilir.</Text>
         </View>
       </SafeAreaView>
     );
@@ -92,41 +124,64 @@ function GameApp() {
   if (screen === 'learn') {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.panel}>
+        <ScrollView contentContainerStyle={styles.learnContent}>
           <Text style={styles.panelTitle}>Gri su nedir?</Text>
-          <Text style={styles.infoText}>
-            Gri su, tuvalet suyu hariç evde oluşan nispeten az kirli atık sudur. Duş, banyo lavabosu, el yıkama ve bazı çamaşır suları gri su olabilir.
-          </Text>
-          <Text style={styles.infoText}>
-            Ama çamaşır suyu, ağır kimyasal, yağ, boya, ilaç veya tuvalet atığı karışmış su güvenli değildir. Gri su içilmez; doğru filtreleme ile bahçe, rezervuar veya temizlikte kullanılabilir.
-          </Text>
+          {LEARNING_CARDS.map((card) => (
+            <View key={card.title} style={styles.lessonCard}>
+              <Text style={styles.lessonEmoji}>{card.emoji}</Text>
+              <View style={styles.lessonBody}>
+                <Text style={styles.lessonTitle}>{card.title}</Text>
+                <Text style={styles.infoText}>{card.body}</Text>
+              </View>
+            </View>
+          ))}
+          <Text style={styles.warningBox}>Güvenlik notu: Gri su hiçbir zaman içme suyu gibi düşünülmez. Yerel yönetmelikler ve hijyen kuralları önceliklidir.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Anladım, oynayalım</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
             <Text style={styles.secondaryButtonText}>Geri</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   if (screen === 'result') {
+    const correctCount = answers.filter((item) => item.isCorrect).length;
+    const missed = answers.filter((item) => !item.isCorrect).slice(0, 3);
+
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.hero}>
+        <ScrollView contentContainerStyle={styles.resultContent}>
           <Text style={styles.logo}>🏆</Text>
-          <Text style={styles.title}>Maç bitti!</Text>
+          <Text style={styles.title}>Öğrenme turu bitti!</Text>
           <Text style={styles.resultScore}>{score} puan</Text>
-          <Text style={styles.subtitle}>En iyi seri: {bestStreak}</Text>
-          <Text style={styles.smallNote}>Sonraki sürümde rozetler, günlük görevler ve Türkiye sıralaması eklenecek.</Text>
+          <Text style={styles.subtitle}>{correctCount}/{answers.length} doğru · En iyi seri: {bestStreak}</Text>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Bugünkü öğrenme özeti</Text>
+            <Text style={styles.summaryText}>Gri su içilmez, tuvalet suyu gri su değildir ve kimyasal karışmış sular güvenli kullanım dışıdır.</Text>
+          </View>
+          {missed.length > 0 ? (
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>Tekrar bakılacak konular</Text>
+              {missed.map((item) => (
+                <Text key={item.question.id} style={styles.reviewItem}>• {item.question.explanation}</Text>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.smallNote}>Harika! Bu turda yanlış cevap yok. Yine de güvenlik notlarını tekrar etmek öğrenmeyi pekiştirir.</Text>
+          )}
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
-            <Text style={styles.primaryButtonText}>Tekrar Oyna</Text>
+            <Text style={styles.primaryButtonText}>Yeni Eğitim Turu</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('learn')}>
+            <Text style={styles.secondaryButtonText}>Bilgi Kartlarına Dön</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
             <Text style={styles.secondaryButtonText}>Ana Menü</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -227,6 +282,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0f172a' },
   safe: { flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 18, paddingTop: 18 },
   hero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  learnContent: { flexGrow: 1, justifyContent: 'center', gap: 14, paddingVertical: 24 },
+  resultContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', gap: 14, paddingVertical: 24 },
   logo: { fontSize: 72 },
   title: { color: 'white', fontSize: 36, fontWeight: '900', textAlign: 'center' },
   subtitle: { color: '#cbd5e1', fontSize: 17, textAlign: 'center', lineHeight: 25 },
@@ -238,7 +295,16 @@ const styles = StyleSheet.create({
   panel: { flex: 1, justifyContent: 'center', gap: 14 },
   panelTitle: { color: 'white', fontSize: 30, fontWeight: '900' },
   infoText: { color: '#dbeafe', fontSize: 16, lineHeight: 25 },
+  lessonCard: { flexDirection: 'row', gap: 12, backgroundColor: 'rgba(255,255,255,0.07)', borderColor: 'rgba(125,211,252,0.22)', borderWidth: 1, borderRadius: 22, padding: 16 },
+  lessonEmoji: { fontSize: 30, width: 38 },
+  lessonBody: { flex: 1, gap: 5 },
+  lessonTitle: { color: '#67e8f9', fontSize: 17, fontWeight: '900' },
+  warningBox: { color: '#fde68a', backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.35)', borderWidth: 1, borderRadius: 18, padding: 14, fontSize: 14, lineHeight: 21, fontWeight: '700' },
   resultScore: { color: '#67e8f9', fontSize: 46, fontWeight: '900' },
+  summaryCard: { alignSelf: 'stretch', backgroundColor: 'rgba(15,23,42,0.85)', borderColor: 'rgba(45,212,191,0.28)', borderWidth: 1, borderRadius: 22, padding: 16, gap: 8 },
+  summaryTitle: { color: '#99f6e4', fontSize: 17, fontWeight: '900' },
+  summaryText: { color: '#dbeafe', fontSize: 15, lineHeight: 22 },
+  reviewItem: { color: '#dbeafe', fontSize: 14.5, lineHeight: 22 },
   header: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   score: { color: '#ecfeff', fontWeight: '900', fontSize: 16 },
   feedback: { minHeight: 68, color: '#dbeafe', fontSize: 15, lineHeight: 21, marginTop: 14, marginBottom: 8 },
