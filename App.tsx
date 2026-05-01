@@ -2,11 +2,9 @@ import React from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
-  type SharedValue,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -27,7 +25,7 @@ type AnswerRecord = {
   question: Question;
   choice: Basket;
   isCorrect: boolean;
-  madeShot: boolean;
+  shotQuality: ShotQuality;
 };
 
 type ScoreBurstState = {
@@ -35,6 +33,8 @@ type ScoreBurstState = {
   points: number;
   label?: string;
 };
+
+type ShotQuality = 'perfect' | 'good' | 'miss';
 
 type ScoreRecords = {
   weekly: number;
@@ -176,14 +176,14 @@ function GameApp() {
     setScreen('game');
   }
 
-  function answerQuestion(choice: Basket, madeShot: boolean) {
+  function answerQuestion(choice: Basket, shotQuality: ShotQuality) {
     const current = questions[index];
     if (!current) {return;}
     const isCorrect = (choice === 'yes') === current.answer;
-    setAnswers((items) => [...items, { question: current, choice, isCorrect, madeShot }]);
+    setAnswers((items) => [...items, { question: current, choice, isCorrect, shotQuality }]);
     const nextStreak = isCorrect ? streak + 1 : 0;
     const knowledgePoints = isCorrect ? 10 + Math.min(nextStreak * 2, 10) : 0;
-    const shotBonus = isCorrect && madeShot ? 5 : 0;
+    const shotBonus = isCorrect ? (shotQuality === 'perfect' ? 8 : shotQuality === 'good' ? 4 : 0) : 0;
     const earnedPoints = knowledgePoints + shotBonus;
     const finalScore = score + earnedPoints;
 
@@ -191,8 +191,8 @@ function GameApp() {
       setStreak(nextStreak);
       setBestStreak((b) => Math.max(b, nextStreak));
       setScore(finalScore);
-      setScoreBurst({ id: Date.now(), points: earnedPoints, label: shotBonus ? 'İsabet bonusu!' : 'Doğru seçim' });
-      setFeedback(`${madeShot ? '🏀' : '✅'} Doğru taraf! ${shotBonus ? '+5 isabet bonusu aldın. ' : 'Çemberi kaçırdın ama doğru seçimden puan aldın. '}${current.explanation}`);
+      setScoreBurst({ id: Date.now(), points: earnedPoints, label: shotBonus ? (shotQuality === 'perfect' ? 'Mükemmel atış!' : 'İyi atış!') : 'Doğru seçim' });
+      setFeedback(`${shotBonus ? '🏀' : '✅'} Doğru taraf! ${shotBonus ? `+${shotBonus} atış bonusu aldın. ` : 'Atış gücü kaçtı ama doğru seçimden puan aldın. '}${current.explanation}`);
     } else {
       setStreak(0);
       setFeedback(`❌ Yanlış taraf. ${current.explanation}`);
@@ -360,13 +360,14 @@ function RecordCard({ title, value }: { title: string; value: number }) {
   );
 }
 
-function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, madeShot: boolean) => void }) {
+function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, shotQuality: ShotQuality) => void }) {
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const scale = useSharedValue(1);
   const rotate = useSharedValue(0);
-  const rimPulse = useSharedValue(1);
-  const pulseStartedAt = React.useRef(Date.now());
+  const power = useSharedValue(0);
+  const powerDirection = React.useRef(1);
+  const powerValue = React.useRef(0);
 
   React.useEffect(() => {
     x.value = 0;
@@ -376,20 +377,24 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
   }, [question.id, rotate, scale, x, y]);
 
   React.useEffect(() => {
-    pulseStartedAt.current = Date.now();
-    rimPulse.value = withRepeat(
-      withSequence(withTiming(1.18, { duration: 520 }), withTiming(0.74, { duration: 520 })),
-      -1,
-      true,
-    );
-  }, [rimPulse]);
+    power.value = 0;
+    powerValue.current = 0;
+    powerDirection.current = 1;
+    const timer = setInterval(() => {
+      const next = Math.max(0, Math.min(1, powerValue.current + (powerDirection.current * 0.045)));
+      if (next >= 1 || next <= 0) {powerDirection.current *= -1;}
+      powerValue.current = next;
+      power.value = withTiming(next, { duration: 70 });
+    }, 70);
+    return () => clearInterval(timer);
+  }, [power, question.id]);
 
   const decide = (dropX: number) => {
     const choice: Basket = dropX < 0 ? 'yes' : 'no';
     const targetX = choice === 'yes' ? -104 : 104;
-    const phase = ((Date.now() - pulseStartedAt.current) % 1040) / 1040;
-    const movingWindow = Math.sin(phase * Math.PI * 2);
-    const madeShot = movingWindow > -0.1 && movingWindow < 0.65;
+    const currentPower = powerValue.current;
+    const distanceFromSweetSpot = Math.abs(currentPower - 0.72);
+    const shotQuality: ShotQuality = distanceFromSweetSpot < 0.08 ? 'perfect' : distanceFromSweetSpot < 0.18 ? 'good' : 'miss';
     x.value = withTiming(targetX, { duration: 520 });
     y.value = withSequence(
       withTiming(-210, { duration: 260 }),
@@ -398,7 +403,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     );
     scale.value = withSequence(withTiming(0.72, { duration: 320 }), withTiming(0.46, { duration: 260 }));
     rotate.value = withTiming(choice === 'yes' ? -185 : 185, { duration: 620 });
-    setTimeout(() => onAnswer(choice, madeShot), 680);
+    setTimeout(() => onAnswer(choice, shotQuality), 680);
     setTimeout(() => {
       x.value = withSpring(0);
       y.value = withSpring(0);
@@ -432,6 +437,10 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     ],
   }));
 
+  const powerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: power.value * 196 }],
+  }));
+
   return (
     <View style={styles.court}>
       <View style={styles.questionBoard}>
@@ -454,8 +463,15 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         </View>
       </View>
       <View style={styles.basketsRow}>
-        <BasketCard label="EVET" color="#22c55e" side="left" pulse={rimPulse} />
-        <BasketCard label="HAYIR" color="#ef4444" side="right" pulse={rimPulse} />
+        <BasketCard label="EVET" color="#22c55e" side="left" />
+        <BasketCard label="HAYIR" color="#ef4444" side="right" />
+      </View>
+      <View style={styles.powerPanel}>
+        <Text style={styles.powerLabel}>Atış gücü: yeşil bölgede bırak, bonusu kap</Text>
+        <View style={styles.powerTrack}>
+          <View style={styles.powerSweetSpot} />
+          <Animated.View style={[styles.powerNeedle, powerStyle]} />
+        </View>
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.ball, ballStyle]}>
@@ -465,16 +481,12 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
           <View style={styles.ballSeamRight} />
         </Animated.View>
       </GestureDetector>
-      <Text style={styles.throwHint}>Topu sola atarsan EVET, sağa atarsan HAYIR.</Text>
+      <Text style={styles.throwHint}>Topu doğru potaya sürükle; güç barını yeşilde yakalarsan bonus alırsın.</Text>
     </View>
   );
 }
 
-function BasketCard({ label, color, side, pulse }: { label: string; color: string; side: 'left' | 'right'; pulse: SharedValue<number> }) {
-  const rimStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: pulse.value }, { scaleY: 0.82 + ((pulse.value - 0.74) * 0.38) }],
-  }));
-
+function BasketCard({ label, color, side }: { label: string; color: string; side: 'left' | 'right' }) {
   return (
     <View style={styles.basketSlot}>
       <View style={[styles.backboard, { borderColor: color }]}>
@@ -482,9 +494,9 @@ function BasketCard({ label, color, side, pulse }: { label: string; color: strin
         <Text style={[styles.basketLabel, { color }]}>{label}</Text>
       </View>
       <View style={[styles.rimShadow, side === 'left' ? styles.leftRimShadow : styles.rightRimShadow]} />
-      <Animated.View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }, rimStyle]}>
+      <View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }]}>
         <View style={[styles.rimInner, { borderColor: color }]} />
-      </Animated.View>
+      </View>
       <View style={styles.net}>
         <View style={styles.netTop} />
         <View style={styles.netLinesRow}>
@@ -575,5 +587,10 @@ const styles = StyleSheet.create({
   ballSeamHorizontal: { position: 'absolute', width: BALL_SIZE, height: 5, backgroundColor: 'rgba(67,20,7,0.55)' },
   ballSeamLeft: { position: 'absolute', left: 20, width: 58, height: BALL_SIZE + 28, borderRightWidth: 5, borderColor: 'rgba(67,20,7,0.55)', borderRadius: 80, transform: [{ rotate: '-18deg' }] },
   ballSeamRight: { position: 'absolute', right: 20, width: 58, height: BALL_SIZE + 28, borderLeftWidth: 5, borderColor: 'rgba(67,20,7,0.55)', borderRadius: 80, transform: [{ rotate: '18deg' }] },
+  powerPanel: { position: 'absolute', bottom: 72, alignSelf: 'center', width: 250, borderRadius: 18, backgroundColor: 'rgba(15,23,42,0.82)', borderColor: 'rgba(251,191,36,0.42)', borderWidth: 1, padding: 10, zIndex: 4 },
+  powerLabel: { color: '#fde68a', fontSize: 11.5, fontWeight: '900', textAlign: 'center', marginBottom: 8 },
+  powerTrack: { height: 18, borderRadius: 10, backgroundColor: '#7f1d1d', overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.65)' },
+  powerSweetSpot: { position: 'absolute', left: 132, width: 52, top: 0, bottom: 0, backgroundColor: '#22c55e' },
+  powerNeedle: { position: 'absolute', left: 15, top: -4, width: 7, height: 24, borderRadius: 4, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#0f172a' },
   throwHint: { position: 'absolute', bottom: 28, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
 });
