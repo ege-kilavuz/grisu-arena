@@ -12,7 +12,7 @@ import Animated, {
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { pickQuestions, type Question } from './src/data/questions';
 
-const BALL_SIZE = 156;
+const BALL_SIZE = 118;
 const GAME_LENGTH = 12;
 
 type Basket = 'yes' | 'no';
@@ -254,10 +254,24 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
 
   return (
     <View style={styles.court}>
+      <View style={styles.questionBoard}>
+        <Text style={styles.questionKicker}>Soru</Text>
+        <Text style={styles.questionText}>{question.text}</Text>
+      </View>
       <View style={styles.courtFloor}>
+        <View style={styles.woodStripeOne} />
+        <View style={styles.woodStripeTwo} />
+        <View style={styles.woodStripeThree} />
+        <View style={styles.sideline} />
+        <View style={styles.midCourtLine} />
         <View style={styles.paintArea} />
+        <View style={styles.freeThrowCircle} />
+        <View style={styles.threePointArc} />
         <View style={styles.centerCircle} />
         <View style={styles.freeThrowLine} />
+        <View style={styles.baselineLabel}>
+          <Text style={styles.baselineText}>GRİSU ARENA</Text>
+        </View>
       </View>
       <View style={styles.basketsRow}>
         <BasketCard label="EVET" color="#22c55e" side="left" />
@@ -269,7 +283,6 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
           <View style={styles.ballSeamHorizontal} />
           <View style={styles.ballSeamLeft} />
           <View style={styles.ballSeamRight} />
-          <Text style={styles.ballQuestion}>{question.text}</Text>
         </Animated.View>
       </GestureDetector>
       <Text style={styles.throwHint}>Topu sola atarsan EVET, sağa atarsan HAYIR.</Text>
@@ -323,32 +336,43 @@ const styles = StyleSheet.create({
   score: { color: '#ecfeff', fontWeight: '900', fontSize: 16 },
   feedback: { minHeight: 68, color: '#dbeafe', fontSize: 15, lineHeight: 21, marginTop: 14, marginBottom: 8 },
   court: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  courtFloor: { position: 'absolute', left: -24, right: -24, top: 110, bottom: 8, borderTopWidth: 2, borderColor: 'rgba(125,211,252,0.18)', backgroundColor: 'rgba(15,118,110,0.10)', borderTopLeftRadius: 42, borderTopRightRadius: 42 },
-  paintArea: { position: 'absolute', top: 0, alignSelf: 'center', width: 158, height: 156, borderWidth: 2, borderColor: 'rgba(251,146,60,0.24)', borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  centerCircle: { position: 'absolute', top: 154, alignSelf: 'center', width: 210, height: 106, borderWidth: 2, borderColor: 'rgba(125,211,252,0.15)', borderRadius: 110 },
-  freeThrowLine: { position: 'absolute', top: 154, alignSelf: 'center', width: 166, height: 2, backgroundColor: 'rgba(251,146,60,0.22)' },
-  basketsRow: { position: 'absolute', top: 18, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', zIndex: 1 },
-  basketSlot: { width: 142, height: 174, alignItems: 'center' },
-  backboard: { width: 118, height: 76, borderWidth: 4, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(241,245,249,0.13)' },
+  questionBoard: { position: 'absolute', top: 0, left: 0, right: 0, minHeight: 92, borderRadius: 18, borderWidth: 2, borderColor: 'rgba(251,191,36,0.5)', backgroundColor: 'rgba(15,23,42,0.92)', paddingVertical: 12, paddingHorizontal: 14, zIndex: 4, shadowColor: '#000', shadowOpacity: 0.22, shadowOffset: { width: 0, height: 8 }, shadowRadius: 14, elevation: 6 },
+  questionKicker: { color: '#fbbf24', fontSize: 12, fontWeight: '900', letterSpacing: 1.6, marginBottom: 4 },
+  questionText: { color: '#f8fafc', fontSize: 16, lineHeight: 22, fontWeight: '900' },
+  courtFloor: { position: 'absolute', left: -28, right: -28, top: 108, bottom: 6, borderWidth: 3, borderColor: 'rgba(255,255,255,0.7)', backgroundColor: '#b7791f', borderRadius: 24, overflow: 'hidden' },
+  woodStripeOne: { position: 'absolute', left: 0, right: 0, top: 38, height: 36, backgroundColor: 'rgba(146,64,14,0.26)' },
+  woodStripeTwo: { position: 'absolute', left: 0, right: 0, top: 118, height: 42, backgroundColor: 'rgba(253,186,116,0.18)' },
+  woodStripeThree: { position: 'absolute', left: 0, right: 0, top: 222, height: 38, backgroundColor: 'rgba(146,64,14,0.20)' },
+  sideline: { position: 'absolute', left: 16, right: 16, top: 18, bottom: 18, borderWidth: 2, borderColor: 'rgba(255,255,255,0.72)', borderRadius: 18 },
+  midCourtLine: { position: 'absolute', top: 205, left: 16, right: 16, height: 2, backgroundColor: 'rgba(255,255,255,0.72)' },
+  paintArea: { position: 'absolute', top: 0, alignSelf: 'center', width: 154, height: 156, borderWidth: 3, borderColor: 'rgba(255,255,255,0.8)', borderBottomLeftRadius: 6, borderBottomRightRadius: 6, backgroundColor: 'rgba(14,116,144,0.18)' },
+  freeThrowCircle: { position: 'absolute', top: 116, alignSelf: 'center', width: 154, height: 82, borderWidth: 3, borderColor: 'rgba(255,255,255,0.72)', borderRadius: 82 },
+  threePointArc: { position: 'absolute', top: 44, alignSelf: 'center', width: 318, height: 214, borderWidth: 3, borderColor: 'rgba(255,255,255,0.62)', borderRadius: 170 },
+  centerCircle: { position: 'absolute', top: 156, alignSelf: 'center', width: 122, height: 122, borderWidth: 3, borderColor: 'rgba(255,255,255,0.75)', borderRadius: 70 },
+  freeThrowLine: { position: 'absolute', top: 156, alignSelf: 'center', width: 154, height: 3, backgroundColor: 'rgba(255,255,255,0.85)' },
+  baselineLabel: { position: 'absolute', top: 278, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(15,23,42,0.25)' },
+  baselineText: { color: 'rgba(255,255,255,0.58)', fontWeight: '900', letterSpacing: 3, fontSize: 12 },
+  basketsRow: { position: 'absolute', top: 112, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', zIndex: 2 },
+  basketSlot: { width: 132, height: 158, alignItems: 'center' },
+  backboard: { width: 108, height: 66, borderWidth: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(241,245,249,0.18)' },
   backboardSquare: { position: 'absolute', bottom: 10, width: 42, height: 27, borderWidth: 2, borderRadius: 4, opacity: 0.8 },
-  basketLabel: { position: 'absolute', top: 8, fontSize: 17, fontWeight: '900', letterSpacing: 1 },
-  rimShadow: { position: 'absolute', top: 75, width: 76, height: 18, borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.22)' },
+  basketLabel: { position: 'absolute', top: 7, fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  rimShadow: { position: 'absolute', top: 66, width: 72, height: 17, borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.24)' },
   leftRimShadow: { transform: [{ rotate: '-4deg' }] },
   rightRimShadow: { transform: [{ rotate: '4deg' }] },
-  rim: { position: 'absolute', top: 68, width: 82, height: 28, borderWidth: 5, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
+  rim: { position: 'absolute', top: 60, width: 78, height: 27, borderWidth: 5, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
   rimInner: { width: 56, height: 13, borderWidth: 2, borderRadius: 32, opacity: 0.85 },
-  net: { position: 'absolute', top: 90, width: 66, height: 60, alignItems: 'center' },
+  net: { position: 'absolute', top: 82, width: 64, height: 58, alignItems: 'center' },
   netTop: { width: 62, height: 2, backgroundColor: 'rgba(226,232,240,0.9)' },
   netBottom: { position: 'absolute', bottom: 0, width: 34, height: 2, backgroundColor: 'rgba(226,232,240,0.72)' },
   netLinesRow: { flexDirection: 'row', gap: 14, height: 54 },
   netLine: { width: 2, height: 55, backgroundColor: 'rgba(226,232,240,0.72)' },
   netLineLeft: { width: 2, height: 55, backgroundColor: 'rgba(226,232,240,0.72)', transform: [{ rotate: '13deg' }] },
   netLineRight: { width: 2, height: 55, backgroundColor: 'rgba(226,232,240,0.72)', transform: [{ rotate: '-13deg' }] },
-  ball: { width: BALL_SIZE, height: BALL_SIZE, borderRadius: BALL_SIZE / 2, backgroundColor: '#f97316', borderWidth: 6, borderColor: '#7c2d12', alignItems: 'center', justifyContent: 'center', padding: 17, shadowColor: '#000', shadowOpacity: 0.38, shadowOffset: { width: 0, height: 14 }, shadowRadius: 18, elevation: 9, overflow: 'hidden', zIndex: 3 },
+  ball: { width: BALL_SIZE, height: BALL_SIZE, borderRadius: BALL_SIZE / 2, backgroundColor: '#f97316', borderWidth: 5, borderColor: '#7c2d12', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.42, shadowOffset: { width: 0, height: 14 }, shadowRadius: 18, elevation: 9, overflow: 'hidden', zIndex: 3 },
   ballSeamVertical: { position: 'absolute', width: 5, height: BALL_SIZE, backgroundColor: 'rgba(67,20,7,0.55)' },
   ballSeamHorizontal: { position: 'absolute', width: BALL_SIZE, height: 5, backgroundColor: 'rgba(67,20,7,0.55)' },
   ballSeamLeft: { position: 'absolute', left: 20, width: 58, height: BALL_SIZE + 28, borderRightWidth: 5, borderColor: 'rgba(67,20,7,0.55)', borderRadius: 80, transform: [{ rotate: '-18deg' }] },
   ballSeamRight: { position: 'absolute', right: 20, width: 58, height: BALL_SIZE + 28, borderLeftWidth: 5, borderColor: 'rgba(67,20,7,0.55)', borderRadius: 80, transform: [{ rotate: '18deg' }] },
-  ballQuestion: { color: '#fff7ed', fontSize: 13, lineHeight: 16.5, textAlign: 'center', fontWeight: '900', textShadowColor: 'rgba(67,20,7,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-  throwHint: { position: 'absolute', bottom: 42, color: '#93c5fd', fontWeight: '800', textAlign: 'center' },
+  throwHint: { position: 'absolute', bottom: 28, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
 });
