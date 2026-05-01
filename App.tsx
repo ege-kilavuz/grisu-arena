@@ -1,5 +1,5 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
 
 const BALL_SIZE = 118;
@@ -22,6 +23,11 @@ type AnswerRecord = {
   question: Question;
   choice: Basket;
   isCorrect: boolean;
+};
+
+type ScoreBurstState = {
+  id: number;
+  points: number;
 };
 
 function buildResultCard(answers: AnswerRecord[]) {
@@ -76,9 +82,11 @@ function buildResultCard(answers: AnswerRecord[]) {
 export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      <ExpoStatusBar style="light" />
-      <GameApp />
+      <SafeAreaProvider>
+        <StatusBar barStyle="light-content" />
+        <ExpoStatusBar style="light" />
+        <GameApp />
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
@@ -92,6 +100,7 @@ function GameApp() {
   const [bestStreak, setBestStreak] = React.useState(0);
   const [feedback, setFeedback] = React.useState('Topu doğru potaya sürükle.');
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
+  const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
 
   const question = questions[index];
 
@@ -102,6 +111,7 @@ function GameApp() {
     setStreak(0);
     setBestStreak(0);
     setAnswers([]);
+    setScoreBurst(null);
     setFeedback('Topu doğru potaya sürükle.');
     setScreen('game');
   }
@@ -113,9 +123,11 @@ function GameApp() {
     setAnswers((items) => [...items, { question: current, choice, isCorrect }]);
     if (isCorrect) {
       const nextStreak = streak + 1;
+      const earnedPoints = 10 + Math.min(nextStreak * 2, 10);
       setStreak(nextStreak);
       setBestStreak((b) => Math.max(b, nextStreak));
-      setScore((s) => s + 10 + Math.min(nextStreak * 2, 10));
+      setScore((s) => s + earnedPoints);
+      setScoreBurst({ id: Date.now(), points: earnedPoints });
       setFeedback(`✅ Doğru! ${current.explanation}`);
     } else {
       setStreak(0);
@@ -130,7 +142,7 @@ function GameApp() {
 
   if (screen === 'home') {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <View style={styles.hero}>
           <Text style={styles.logo}>🏀💧</Text>
           <Text style={styles.title}>GriSu Arena</Text>
@@ -150,7 +162,7 @@ function GameApp() {
     const resultCard = buildResultCard(answers);
 
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <ScrollView contentContainerStyle={styles.resultContent}>
           <Text style={styles.logo}>🏆</Text>
           <Text style={styles.title}>Öğrenme turu bitti!</Text>
@@ -182,15 +194,48 @@ function GameApp() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
       <View style={styles.header}>
         <Text style={styles.score}>Skor: {score}</Text>
         <Text style={styles.score}>Seri: {streak}</Text>
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
+      {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} /> : null}
       <Text style={styles.feedback} numberOfLines={3}>{feedback}</Text>
       {question ? <Court question={question} onAnswer={answerQuestion} /> : null}
     </SafeAreaView>
+  );
+}
+
+function ScoreBurst({ points }: { points: number }) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(18);
+  const scale = useSharedValue(0.72);
+  const rotate = useSharedValue(-8);
+
+  React.useEffect(() => {
+    opacity.value = withSequence(withTiming(1, { duration: 120 }), withTiming(1, { duration: 520 }), withTiming(0, { duration: 260 }));
+    translateY.value = withSequence(withSpring(-8), withTiming(-52, { duration: 560 }));
+    scale.value = withSequence(withSpring(1.24), withTiming(1, { duration: 360 }));
+    rotate.value = withSequence(withTiming(6, { duration: 160 }), withTiming(-3, { duration: 220 }), withTiming(0, { duration: 200 }));
+  }, [opacity, rotate, scale, translateY]);
+
+  const burstStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value },
+      { rotate: `${rotate.value}deg` },
+    ],
+  }));
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.scoreBurst, burstStyle]}>
+      <View style={styles.scoreBurstSparkOne} />
+      <View style={styles.scoreBurstSparkTwo} />
+      <View style={styles.scoreBurstSparkThree} />
+      <Text style={styles.scoreBurstText}>+{points}</Text>
+    </Animated.View>
   );
 }
 
@@ -316,7 +361,7 @@ function BasketCard({ label, color, side }: { label: string; color: string; side
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0f172a' },
-  safe: { flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 18, paddingTop: 18 },
+  safe: { flex: 1, backgroundColor: '#0f172a', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 10 },
   hero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   resultContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', gap: 14, paddingVertical: 24 },
   logo: { fontSize: 72 },
@@ -334,6 +379,11 @@ const styles = StyleSheet.create({
   reviewItem: { color: '#dbeafe', fontSize: 14.5, lineHeight: 22 },
   header: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   score: { color: '#ecfeff', fontWeight: '900', fontSize: 16 },
+  scoreBurst: { position: 'absolute', top: 74, alignSelf: 'center', minWidth: 104, height: 58, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#facc15', borderWidth: 4, borderColor: '#fff7ed', shadowColor: '#f97316', shadowOpacity: 0.55, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, elevation: 12, zIndex: 20 },
+  scoreBurstText: { color: '#7c2d12', fontSize: 28, fontWeight: '900', letterSpacing: 0.5 },
+  scoreBurstSparkOne: { position: 'absolute', top: -12, left: 8, width: 13, height: 13, borderRadius: 7, backgroundColor: '#fb7185' },
+  scoreBurstSparkTwo: { position: 'absolute', right: -10, top: 18, width: 16, height: 16, borderRadius: 8, backgroundColor: '#22c55e' },
+  scoreBurstSparkThree: { position: 'absolute', bottom: -9, left: 34, width: 11, height: 11, borderRadius: 6, backgroundColor: '#38bdf8' },
   feedback: { minHeight: 68, color: '#dbeafe', fontSize: 15, lineHeight: 21, marginTop: 14, marginBottom: 8 },
   court: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   questionBoard: { position: 'absolute', top: 0, left: 0, right: 0, minHeight: 92, borderRadius: 18, borderWidth: 2, borderColor: 'rgba(251,191,36,0.5)', backgroundColor: 'rgba(15,23,42,0.92)', paddingVertical: 12, paddingHorizontal: 14, zIndex: 4, shadowColor: '#000', shadowOpacity: 0.22, shadowOffset: { width: 0, height: 8 }, shadowRadius: 14, elevation: 6 },
