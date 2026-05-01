@@ -7,3 +7,7 @@ release/
 .DS_Store
 .env
 .env.*
+*.jks
+*.keystore
+android/keystore.properties
+android/app/keystores/
