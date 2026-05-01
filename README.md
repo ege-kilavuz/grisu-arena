@@ -34,4 +34,5 @@ Gri su doğru filtrelenip/arıtıldığında bahçe sulama, rezervuar, temizlik 
 npm install
 npm run typecheck
 npm start
+npx expo export --platform web
 ```
