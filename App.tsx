@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
@@ -15,10 +15,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
 
-const BALL_SIZE = 118;
+const BALL_SIZE = 92;
 const GAME_LENGTH = 12;
 const STARTING_LIVES = 3;
 const RECORDS_KEY = 'grisu-arena-records-v1';
+const PLAYER_NAME_KEY = 'grisu-arena-player-name-v1';
+const ONLINE_LEADERBOARD_URL = process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? ''; // POST/GET dönen online skor API adresi.
 
 type Basket = 'yes' | 'no';
 type Screen = 'home' | 'game' | 'result' | 'records';
@@ -40,7 +42,7 @@ type ScoreBurstState = {
 type ShotQuality = 'swish' | 'perfect' | 'good' | 'miss';
 type ShotMode = 'safe' | 'risk';
 
-type LeaderboardEntry = {
+type OnlineScore = {
   id: string;
   name: string;
   score: number;
@@ -53,7 +55,6 @@ type ScoreRecords = {
   allTime: number;
   weekKey: string;
   monthKey: string;
-  leaderboard: LeaderboardEntry[];
 };
 
 function getPeriodKeys(date = new Date()) {
@@ -67,7 +68,7 @@ function getPeriodKeys(date = new Date()) {
 }
 
 function emptyRecords(): ScoreRecords {
-  return { weekly: 0, monthly: 0, allTime: 0, leaderboard: [], ...getPeriodKeys() };
+  return { weekly: 0, monthly: 0, allTime: 0, ...getPeriodKeys() };
 }
 
 function normalizeRecords(records: ScoreRecords): ScoreRecords {
@@ -76,7 +77,6 @@ function normalizeRecords(records: ScoreRecords): ScoreRecords {
     weekly: records.weekKey === keys.weekKey ? records.weekly : 0,
     monthly: records.monthKey === keys.monthKey ? records.monthly : 0,
     allTime: records.allTime ?? 0,
-    leaderboard: records.leaderboard ?? [],
     ...keys,
   };
 }
@@ -176,6 +176,9 @@ function GameApp() {
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
   const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
   const [records, setRecords] = React.useState<ScoreRecords>(() => emptyRecords());
+  const [playerName, setPlayerName] = React.useState('');
+  const [onlineScores, setOnlineScores] = React.useState<OnlineScore[]>([]);
+  const [leaderboardStatus, setLeaderboardStatus] = React.useState('Online sıralama için backend adresi bekleniyor.');
 
   React.useEffect(() => {
     AsyncStorage.getItem(RECORDS_KEY)
@@ -184,30 +187,66 @@ function GameApp() {
         setRecords(normalizeRecords(JSON.parse(raw) as ScoreRecords));
       })
       .catch(() => setRecords(emptyRecords()));
+    AsyncStorage.getItem(PLAYER_NAME_KEY).then((name) => {
+      if (name) {setPlayerName(name);}
+    }).catch(() => undefined);
   }, []);
 
   async function saveRecord(finalScore: number, correctCount: number) {
     const next = normalizeRecords(records);
-    const entry: LeaderboardEntry = {
-      id: `${Date.now()}-${finalScore}`,
-      name: `Oyuncu ${Math.min((next.leaderboard?.length ?? 0) + 1, 99)}`,
-      score: finalScore,
-      correct: correctCount,
-    };
     const updated = {
       ...next,
       weekly: Math.max(next.weekly, finalScore),
       monthly: Math.max(next.monthly, finalScore),
       allTime: Math.max(next.allTime, finalScore),
-      leaderboard: [...(next.leaderboard ?? []), entry].sort((a, b) => b.score - a.score).slice(0, 5),
     };
     setRecords(updated);
     await AsyncStorage.setItem(RECORDS_KEY, JSON.stringify(updated));
+    await submitOnlineScore(finalScore, correctCount);
+  }
+
+  async function loadOnlineScores() {
+    if (!ONLINE_LEADERBOARD_URL) {return;}
+    try {
+      const response = await fetch(ONLINE_LEADERBOARD_URL);
+      const data = await response.json() as { scores?: OnlineScore[] };
+      setOnlineScores(data.scores ?? []);
+      setLeaderboardStatus('Online sıralama güncellendi.');
+    } catch {
+      setLeaderboardStatus('Online sıralama alınamadı; internet/API ayarı kontrol edilmeli.');
+    }
+  }
+
+  async function submitOnlineScore(finalScore: number, correctCount: number) {
+    const name = playerName.trim();
+    if (!ONLINE_LEADERBOARD_URL || !name) {return;}
+    try {
+      const response = await fetch(ONLINE_LEADERBOARD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.slice(0, 18), score: finalScore, correct: correctCount }),
+      });
+      const data = await response.json() as { scores?: OnlineScore[] };
+      setOnlineScores(data.scores ?? []);
+      setLeaderboardStatus('Online skor gönderildi.');
+    } catch {
+      setLeaderboardStatus('Online skor gönderilemedi; internet/API ayarı kontrol edilmeli.');
+    }
+  }
+
+  async function savePlayerName(name: string) {
+    const clean = name.replace(/[^a-zA-Z0-9ğüşöçıİĞÜŞÖÇ ._-]/g, '').slice(0, 18);
+    setPlayerName(clean);
+    await AsyncStorage.setItem(PLAYER_NAME_KEY, clean);
   }
 
   const question = questions[index];
 
   function startGame() {
+    if (!playerName.trim()) {
+      setFeedback('Önce oyuncu adını yaz; sonra online sıralama için hazır ol.');
+      return;
+    }
     setQuestions(pickQuestions(GAME_LENGTH));
     setIndex(0);
     setScore(0);
@@ -263,12 +302,20 @@ function GameApp() {
           <Text style={styles.logo}>🏀💧</Text>
           <Text style={styles.title}>GriSu Arena</Text>
           <Text style={styles.subtitle}>EVET/HAYIR potasını seç, riskli atışla bonus kovala, gri suyu güvenli kullanmayı öğren.</Text>
-          <Mascot message="Ben Damlacan! Doğru suyu doğru potaya atalım." />
-          <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
-            <Text style={styles.primaryButtonText}>Oyuna Başla</Text>
+          <Mascot message="Ben Damlacan! Önce adını yaz, sonra arena sıralamasında yerini kovala." />
+          <TextInput
+            value={playerName}
+            onChangeText={(text) => savePlayerName(text).catch(() => undefined)}
+            placeholder="Oyuncu adın"
+            placeholderTextColor="#94a3b8"
+            style={styles.nameInput}
+            maxLength={18}
+          />
+          <TouchableOpacity style={[styles.primaryButton, !playerName.trim() && styles.primaryButtonDisabled]} onPress={startGame} disabled={!playerName.trim()}>
+            <Text style={styles.primaryButtonText}>{playerName.trim() ? 'Oyuna Başla' : 'Önce adını yaz'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('records')}>
-            <Text style={styles.secondaryButtonText}>Haftalık / Aylık Puanlar</Text>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => { setScreen('records'); loadOnlineScores().catch(() => undefined); }}>
+            <Text style={styles.secondaryButtonText}>Online Sıralama / Rekorlar</Text>
           </TouchableOpacity>
           <Text style={styles.smallNote}>Eğitim odaklıdır: can sistemi, ateş modu ve riskli atışlar öğrenmeyi daha akıcı yapar.</Text>
         </View>
@@ -280,7 +327,7 @@ function GameApp() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <ScrollView contentContainerStyle={styles.resultContent}>
-          <Mascot message="Rekorlar ve yerel sıralama burada! Yarışma var ama hedefimiz doğru gri su bilgisi." />
+          <Mascot message="Yerel sıralamayı kaldırdım. Rekorlar cihazda, online sıralama API bağlanınca herkese açık olacak." />
           <Text style={styles.title}>Puan Rekorları</Text>
           <View style={styles.recordsGrid}>
             <RecordCard title="Bu Hafta" value={records.weekly} />
@@ -288,10 +335,10 @@ function GameApp() {
             <RecordCard title="Tüm Zamanlar" value={records.allTime} />
           </View>
           <View style={styles.leaderboardCard}>
-            <Text style={styles.summaryTitle}>Yerel Kullanıcı Sıralaması</Text>
-            {(records.leaderboard ?? []).length > 0 ? (records.leaderboard ?? []).map((entry, rank) => (
+            <Text style={styles.summaryTitle}>Online Sıralama</Text>
+            {onlineScores.length > 0 ? onlineScores.map((entry, rank) => (
               <Text key={entry.id} style={styles.leaderboardItem}>{rank + 1}. {entry.name} — {entry.score} puan · {entry.correct}/{GAME_LENGTH} doğru</Text>
-            )) : <Text style={styles.reviewItem}>Henüz kayıt yok. İlk turdan sonra sıralama oluşacak.</Text>}
+            )) : <Text style={styles.reviewItem}>{leaderboardStatus}</Text>}
           </View>
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Rekor Denemesi Başlat</Text>
@@ -315,7 +362,7 @@ function GameApp() {
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <ScrollView contentContainerStyle={styles.resultContent}>
           <Text style={styles.logo}>🏆</Text>
-          <Mascot message="Tur bitti! Hatalar öğrenme kartına dönüştü; rekorunu da kaydettim." />
+          <Mascot message={`Tur bitti ${playerName || 'oyuncu'}! Hatalar öğrenme kartına dönüştü; rekorunu kaydettim.`} />
           <Text style={styles.title}>Öğrenme turu bitti!</Text>
           <Text style={styles.resultScore}>{score} puan</Text>
           <Text style={styles.rankBadge}>{playerRank}</Text>
@@ -345,7 +392,7 @@ function GameApp() {
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Yeni Eğitim Turu</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('records')}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => { setScreen('records'); loadOnlineScores().catch(() => undefined); }}>
             <Text style={styles.secondaryButtonText}>Puan Rekorları</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
@@ -359,14 +406,13 @@ function GameApp() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
       <View style={styles.header}>
-        <Text style={styles.score}>Skor: {score}</Text>
-        <Text style={styles.score}>Can: {'❤️'.repeat(lives)}</Text>
-        <Text style={styles.score}>Seri: {streak}{streak >= 3 ? ' 🔥' : ''}</Text>
+        <Text style={styles.score}>🏀 {score}</Text>
+        <Text style={styles.score}>{'❤️'.repeat(lives)}</Text>
+        <Text style={styles.score}>🔥 {streak}</Text>
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
       {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} label={scoreBurst.label} /> : null}
-      <Text style={styles.missionBanner}>Görev: 4 seri yap · 2 riskli isabet · 1 swish basket</Text>
-      <Text style={styles.feedback} numberOfLines={3}>{feedback}</Text>
+      <Text style={styles.feedback} numberOfLines={2}>{feedback}</Text>
       {question ? <Court question={question} onAnswer={answerQuestion} /> : null}
     </SafeAreaView>
   );
@@ -553,12 +599,12 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         <BasketCard label="HAYIR" color="#ef4444" side="right" selected={selectedBasket === 'no'} pulse={rimPulse} onPress={() => setSelectedBasket('no')} />
       </View>
       <View style={styles.powerPanel}>
-        <Text style={styles.powerLabel}>Atış gücü: yeşilde tut; risk modunda hız artar, bonus x2</Text>
+        <Text style={styles.powerLabel}>GÜÇ: yeşilde yakala</Text>
         <View style={styles.powerTrack}>
           <View style={styles.powerSweetSpot} />
           <Animated.View style={[styles.powerNeedle, powerStyle]} />
         </View>
-        <Text style={styles.powerLabel}>Nişan: rüzgâr {wind > 0 ? 'sağa' : wind < 0 ? 'sola' : 'yok'} {Math.round(Math.abs(wind) * 100)}</Text>
+        <Text style={styles.powerLabel}>NİŞAN: rüzgâr {wind > 0 ? 'sağa' : wind < 0 ? 'sola' : 'yok'} {Math.round(Math.abs(wind) * 100)}</Text>
         <View style={styles.aimTrack}>
           <View style={styles.aimSweetSpot} />
           <Animated.View style={[styles.aimNeedle, aimStyle]} />
@@ -570,21 +616,14 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         <View style={styles.ballSeamLeft} />
         <View style={styles.ballSeamRight} />
       </Animated.View>
-      <View style={styles.choiceControls}>
-        <TouchableOpacity style={[styles.choiceButton, selectedBasket === 'yes' && styles.choiceButtonSelected]} onPress={() => setSelectedBasket('yes')} disabled={isShooting}>
-          <Text style={styles.choiceButtonText}>EVET potası</Text>
+      <View style={styles.shotControls}>
+        <TouchableOpacity style={[styles.riskButton, shotMode === 'risk' && styles.riskButtonActive]} onPress={() => setShotMode((mode) => mode === 'safe' ? 'risk' : 'safe')} disabled={isShooting}>
+          <Text style={styles.riskButtonText}>{shotMode === 'risk' ? 'RİSK x2' : 'GÜVENLİ'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.choiceButton, selectedBasket === 'no' && styles.choiceButtonSelected]} onPress={() => setSelectedBasket('no')} disabled={isShooting}>
-          <Text style={styles.choiceButtonText}>HAYIR potası</Text>
+        <TouchableOpacity style={[styles.shootButton, (!selectedBasket || isShooting) && styles.shootButtonDisabled]} onPress={shoot} disabled={!selectedBasket || isShooting}>
+          <Text style={styles.shootButtonText}>{selectedBasket ? 'ATIŞ' : 'POTA SEÇ'}</Text>
         </TouchableOpacity>
       </View>
-      <TouchableOpacity style={[styles.riskButton, shotMode === 'risk' && styles.riskButtonActive]} onPress={() => setShotMode((mode) => mode === 'safe' ? 'risk' : 'safe')} disabled={isShooting}>
-        <Text style={styles.riskButtonText}>{shotMode === 'risk' ? 'RİSKLİ ATIŞ x2' : 'Güvenli Atış'}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.shootButton, (!selectedBasket || isShooting) && styles.shootButtonDisabled]} onPress={shoot} disabled={!selectedBasket || isShooting}>
-        <Text style={styles.shootButtonText}>{selectedBasket ? 'ATIŞ YAP' : 'Önce pota seç'}</Text>
-      </TouchableOpacity>
-      <Text style={styles.throwHint}>Temel puan bilgiye; güç + nişan + pota zamanlaması sadece ekstra bonus.</Text>
     </View>
   );
 }
@@ -625,7 +664,9 @@ const styles = StyleSheet.create({
   logo: { fontSize: 72 },
   title: { color: 'white', fontSize: 36, fontWeight: '900', textAlign: 'center' },
   subtitle: { color: '#cbd5e1', fontSize: 17, textAlign: 'center', lineHeight: 25 },
+  nameInput: { alignSelf: 'stretch', backgroundColor: 'rgba(15,23,42,0.92)', borderColor: 'rgba(45,212,191,0.55)', borderWidth: 2, borderRadius: 18, paddingVertical: 13, paddingHorizontal: 16, color: '#f8fafc', fontSize: 17, fontWeight: '900', textAlign: 'center' },
   primaryButton: { backgroundColor: '#14b8a6', borderRadius: 18, paddingVertical: 15, paddingHorizontal: 28, marginTop: 8 },
+  primaryButtonDisabled: { opacity: 0.55, backgroundColor: '#64748b' },
   primaryButtonText: { color: '#042f2e', fontWeight: '900', fontSize: 17 },
   secondaryButton: { borderColor: '#38bdf8', borderWidth: 1, borderRadius: 18, paddingVertical: 13, paddingHorizontal: 24 },
   secondaryButtonText: { color: '#bae6fd', fontWeight: '800', fontSize: 15 },
@@ -709,14 +750,15 @@ const styles = StyleSheet.create({
   aimTrack: { height: 18, borderRadius: 10, backgroundColor: '#1e3a8a', overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.65)' },
   aimSweetSpot: { position: 'absolute', left: 105, width: 50, top: 0, bottom: 0, backgroundColor: '#38bdf8' },
   aimNeedle: { position: 'absolute', left: 15, top: -4, width: 7, height: 24, borderRadius: 4, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#0f172a' },
+  shotControls: { position: 'absolute', bottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 7 },
   choiceControls: { position: 'absolute', bottom: 172, flexDirection: 'row', gap: 10, zIndex: 5 },
   choiceButton: { backgroundColor: 'rgba(15,23,42,0.88)', borderColor: 'rgba(255,255,255,0.35)', borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13 },
   choiceButtonSelected: { backgroundColor: '#facc15', borderColor: '#fff7ed' },
   choiceButtonText: { color: '#f8fafc', fontWeight: '900', fontSize: 13 },
-  riskButton: { position: 'absolute', bottom: 70, zIndex: 6, backgroundColor: 'rgba(15,23,42,0.92)', borderRadius: 18, paddingVertical: 9, paddingHorizontal: 18, borderWidth: 2, borderColor: '#fbbf24' },
+  riskButton: { backgroundColor: 'rgba(15,23,42,0.92)', borderRadius: 18, paddingVertical: 12, paddingHorizontal: 18, borderWidth: 2, borderColor: '#fbbf24' },
   riskButtonActive: { backgroundColor: '#f97316', borderColor: '#ffedd5' },
   riskButtonText: { color: '#fff7ed', fontSize: 13, fontWeight: '900', letterSpacing: 0.6 },
-  shootButton: { position: 'absolute', bottom: 20, zIndex: 6, backgroundColor: '#14b8a6', borderRadius: 20, paddingVertical: 13, paddingHorizontal: 30, borderWidth: 3, borderColor: '#ccfbf1' },
+  shootButton: { backgroundColor: '#14b8a6', borderRadius: 20, paddingVertical: 13, paddingHorizontal: 30, borderWidth: 3, borderColor: '#ccfbf1' },
   shootButtonDisabled: { opacity: 0.58, backgroundColor: '#64748b' },
   shootButtonText: { color: '#042f2e', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
   throwHint: { position: 'absolute', bottom: 236, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
