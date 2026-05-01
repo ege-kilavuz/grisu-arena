@@ -108,6 +108,8 @@ android {
             keyPassword 'android'
         }
         release {
+            v1SigningEnabled true
+            v2SigningEnabled true
             if (keystorePropertiesFile.exists()) {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']

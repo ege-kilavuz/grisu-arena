@@ -143,6 +143,19 @@ export default function App() {
 }
 
 
+
+function getMissionResults(answers: AnswerRecord[], bestStreak: number) {
+  const correctCount = answers.filter((item) => item.isCorrect).length;
+  const riskyMakes = answers.filter((item) => item.isCorrect && item.shotMode === 'risk' && item.shotQuality !== 'miss').length;
+  const swishes = answers.filter((item) => item.isCorrect && item.shotQuality === 'swish').length;
+  return [
+    { title: 'Bilgi serisi', done: bestStreak >= 4, detail: `${Math.min(bestStreak, 4)}/4 doğru seri` },
+    { title: 'Riskli atış', done: riskyMakes >= 2, detail: `${Math.min(riskyMakes, 2)}/2 riskli isabet` },
+    { title: 'Temiz basket', done: swishes >= 1, detail: `${Math.min(swishes, 1)}/1 swish` },
+    { title: 'Su uzmanı', done: correctCount >= 10, detail: `${correctCount}/10 doğru bilgi` },
+  ];
+}
+
 function getPlayerRank(score: number, correctCount: number, bestStreak: number) {
   if (correctCount === GAME_LENGTH && bestStreak >= 8) {return 'Efsane Su Koruyucusu 🏆';}
   if (score >= 220) {return 'Arena Şampiyonu 🔥';}
@@ -296,6 +309,7 @@ function GameApp() {
     const missed = answers.filter((item) => !item.isCorrect).slice(0, 3);
     const resultCard = buildResultCard(answers);
     const playerRank = getPlayerRank(score, correctCount, bestStreak);
+    const missions = getMissionResults(answers, bestStreak);
 
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
@@ -309,6 +323,14 @@ function GameApp() {
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{resultCard.title}</Text>
             <Text style={styles.summaryText}>{resultCard.body}</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Arena Görevleri</Text>
+            {missions.map((mission) => (
+              <Text key={mission.title} style={mission.done ? styles.missionDone : styles.missionPending}>
+                {mission.done ? '✅' : '⬜'} {mission.title}: {mission.detail}
+              </Text>
+            ))}
           </View>
           {missed.length > 0 ? (
             <View style={styles.summaryCard}>
@@ -343,6 +365,7 @@ function GameApp() {
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
       {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} label={scoreBurst.label} /> : null}
+      <Text style={styles.missionBanner}>Görev: 4 seri yap · 2 riskli isabet · 1 swish basket</Text>
       <Text style={styles.feedback} numberOfLines={3}>{feedback}</Text>
       {question ? <Court question={question} onAnswer={answerQuestion} /> : null}
     </SafeAreaView>
@@ -613,6 +636,8 @@ const styles = StyleSheet.create({
   summaryTitle: { color: '#99f6e4', fontSize: 17, fontWeight: '900' },
   summaryText: { color: '#dbeafe', fontSize: 15, lineHeight: 22 },
   reviewItem: { color: '#dbeafe', fontSize: 14.5, lineHeight: 22 },
+  missionDone: { color: '#bbf7d0', fontSize: 14.5, lineHeight: 22, fontWeight: '900' },
+  missionPending: { color: '#cbd5e1', fontSize: 14.5, lineHeight: 22, fontWeight: '800' },
   mascotCard: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', gap: 10, backgroundColor: 'rgba(20,184,166,0.12)', borderColor: 'rgba(45,212,191,0.32)', borderWidth: 1, borderRadius: 22, padding: 12 },
   mascotBubble: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#ccfbf1', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#14b8a6' },
   mascotFace: { fontSize: 34 },
@@ -634,7 +659,8 @@ const styles = StyleSheet.create({
   scoreBurstSparkOne: { position: 'absolute', top: -12, left: 8, width: 13, height: 13, borderRadius: 7, backgroundColor: '#fb7185' },
   scoreBurstSparkTwo: { position: 'absolute', right: -10, top: 18, width: 16, height: 16, borderRadius: 8, backgroundColor: '#22c55e' },
   scoreBurstSparkThree: { position: 'absolute', bottom: -9, left: 34, width: 11, height: 11, borderRadius: 6, backgroundColor: '#38bdf8' },
-  feedback: { minHeight: 68, color: '#dbeafe', fontSize: 15, lineHeight: 21, marginTop: 14, marginBottom: 8 },
+  missionBanner: { color: '#fde68a', backgroundColor: 'rgba(251,191,36,0.12)', borderColor: 'rgba(251,191,36,0.35)', borderWidth: 1, borderRadius: 14, paddingVertical: 7, paddingHorizontal: 10, marginTop: 10, fontSize: 12, fontWeight: '900', textAlign: 'center' },
+  feedback: { minHeight: 68, color: '#dbeafe', fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 8 },
   court: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   questionBoard: { position: 'absolute', top: 0, left: 0, right: 0, minHeight: 92, borderRadius: 18, borderWidth: 2, borderColor: 'rgba(251,191,36,0.5)', backgroundColor: 'rgba(15,23,42,0.92)', paddingVertical: 12, paddingHorizontal: 14, zIndex: 4, shadowColor: '#000', shadowOpacity: 0.22, shadowOffset: { width: 0, height: 8 }, shadowRadius: 14, elevation: 6 },
   questionKicker: { color: '#fbbf24', fontSize: 12, fontWeight: '900', letterSpacing: 1.6, marginBottom: 4 },
