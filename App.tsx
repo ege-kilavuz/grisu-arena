@@ -17,6 +17,7 @@ import { pickQuestions, type Question } from './src/data/questions';
 
 const BALL_SIZE = 118;
 const GAME_LENGTH = 12;
+const STARTING_LIVES = 3;
 const RECORDS_KEY = 'grisu-arena-records-v1';
 
 type Basket = 'yes' | 'no';
@@ -27,6 +28,7 @@ type AnswerRecord = {
   choice: Basket;
   isCorrect: boolean;
   shotQuality: ShotQuality;
+  shotMode: ShotMode;
 };
 
 type ScoreBurstState = {
@@ -36,6 +38,7 @@ type ScoreBurstState = {
 };
 
 type ShotQuality = 'swish' | 'perfect' | 'good' | 'miss';
+type ShotMode = 'safe' | 'risk';
 
 type LeaderboardEntry = {
   id: string;
@@ -139,6 +142,15 @@ export default function App() {
   );
 }
 
+
+function getPlayerRank(score: number, correctCount: number, bestStreak: number) {
+  if (correctCount === GAME_LENGTH && bestStreak >= 8) {return 'Efsane Su Koruyucusu 🏆';}
+  if (score >= 220) {return 'Arena Şampiyonu 🔥';}
+  if (score >= 160) {return 'Gri Su Ustası 💧';}
+  if (score >= 100) {return 'Bilinçli Oyuncu 🌱';}
+  return 'Çaylak Koruyucu 🐣';
+}
+
 function GameApp() {
   const [screen, setScreen] = React.useState<Screen>('home');
   const [questions, setQuestions] = React.useState<Question[]>(() => pickQuestions(GAME_LENGTH));
@@ -146,6 +158,7 @@ function GameApp() {
   const [score, setScore] = React.useState(0);
   const [streak, setStreak] = React.useState(0);
   const [bestStreak, setBestStreak] = React.useState(0);
+  const [lives, setLives] = React.useState(STARTING_LIVES);
   const [feedback, setFeedback] = React.useState('Potayı seç, atış gücünü yeşilde yakala.');
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
   const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
@@ -187,23 +200,27 @@ function GameApp() {
     setScore(0);
     setStreak(0);
     setBestStreak(0);
+    setLives(STARTING_LIVES);
     setAnswers([]);
     setScoreBurst(null);
     setFeedback('Potayı seç, atış gücünü yeşilde yakala.');
     setScreen('game');
   }
 
-  function answerQuestion(choice: Basket, shotQuality: ShotQuality) {
+  function answerQuestion(choice: Basket, shotQuality: ShotQuality, shotMode: ShotMode) {
     const current = questions[index];
     if (!current) {return;}
     const isCorrect = (choice === 'yes') === current.answer;
-    setAnswers((items) => [...items, { question: current, choice, isCorrect, shotQuality }]);
+    setAnswers((items) => [...items, { question: current, choice, isCorrect, shotQuality, shotMode }]);
     const nextStreak = isCorrect ? streak + 1 : 0;
     const knowledgePoints = isCorrect ? 10 + Math.min(nextStreak * 2, 10) : 0;
-    const shotBonus = isCorrect ? (shotQuality === 'swish' ? 12 : shotQuality === 'perfect' ? 8 : shotQuality === 'good' ? 4 : 0) : 0;
+    const baseShotBonus = shotQuality === 'swish' ? 12 : shotQuality === 'perfect' ? 8 : shotQuality === 'good' ? 4 : 0;
+    const shotBonus = isCorrect ? baseShotBonus * (shotMode === 'risk' ? 2 : 1) : 0;
     const comboBonus = isCorrect && nextStreak >= 3 ? Math.min(Math.floor(nextStreak / 3) * 3, 9) : 0;
-    const earnedPoints = knowledgePoints + shotBonus + comboBonus;
+    const feverBonus = isCorrect && nextStreak >= 5 ? 6 : 0;
+    const earnedPoints = knowledgePoints + shotBonus + comboBonus + feverBonus;
     const finalScore = score + earnedPoints;
+    const nextLives = isCorrect ? lives : Math.max(0, lives - 1);
 
     if (isCorrect) {
       setStreak(nextStreak);
@@ -211,14 +228,15 @@ function GameApp() {
       setScore(finalScore);
       const shotLabel = shotQuality === 'swish' ? 'Smaç gibi!' : shotQuality === 'perfect' ? 'Mükemmel atış!' : shotQuality === 'good' ? 'İyi atış!' : 'Doğru seçim';
       setScoreBurst({ id: Date.now(), points: earnedPoints, label: shotLabel });
-      setFeedback(`${shotBonus ? '🏀' : '✅'} Doğru taraf! ${shotBonus ? `+${shotBonus} isabet bonusu aldın. ` : 'Atış kaçtı ama doğru cevaptan temel puan aldın. '}${comboBonus ? `+${comboBonus} seri bonusu! ` : ''}${current.explanation}`);
+      setFeedback(`${shotBonus ? '🏀' : '✅'} Doğru taraf! ${shotMode === 'risk' && shotBonus ? 'Riskli atış tuttu, bonus ikiye katlandı! ' : ''}${shotBonus ? `+${shotBonus} isabet bonusu aldın. ` : 'Atış kaçtı ama doğru cevaptan temel puan aldın. '}${comboBonus ? `+${comboBonus} seri bonusu! ` : ''}${feverBonus ? '+6 ateş modu! ' : ''}${current.explanation}`);
     } else {
       setStreak(0);
-      setFeedback(`❌ Yanlış taraf. ${current.explanation}`);
+      setLives(nextLives);
+      setFeedback(`❌ Yanlış taraf. ${nextLives > 0 ? `${nextLives} can kaldı. ` : 'Canlar bitti; tur tamamlandı. '}${current.explanation}`);
     }
 
     setTimeout(() => {
-      if (index + 1 >= questions.length) {
+      if (index + 1 >= questions.length || nextLives <= 0) {
         saveRecord(finalScore, answers.filter((item) => item.isCorrect).length + (isCorrect ? 1 : 0)).catch(() => undefined);
         setScreen('result');
       } else {setIndex((i) => i + 1);}
@@ -231,7 +249,7 @@ function GameApp() {
         <View style={styles.hero}>
           <Text style={styles.logo}>🏀💧</Text>
           <Text style={styles.title}>GriSu Arena</Text>
-          <Text style={styles.subtitle}>Soru topunu EVET veya HAYIR potasına at, gri suyu güvenli ve doğru kullanmayı öğren.</Text>
+          <Text style={styles.subtitle}>EVET/HAYIR potasını seç, riskli atışla bonus kovala, gri suyu güvenli kullanmayı öğren.</Text>
           <Mascot message="Ben Damlacan! Doğru suyu doğru potaya atalım." />
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Oyuna Başla</Text>
@@ -239,7 +257,7 @@ function GameApp() {
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('records')}>
             <Text style={styles.secondaryButtonText}>Haftalık / Aylık Puanlar</Text>
           </TouchableOpacity>
-          <Text style={styles.smallNote}>Eğitim odaklıdır: geniş soru havuzundan her oyunda {GAME_LENGTH} farklı soru seçilir.</Text>
+          <Text style={styles.smallNote}>Eğitim odaklıdır: can sistemi, ateş modu ve riskli atışlar öğrenmeyi daha akıcı yapar.</Text>
         </View>
       </SafeAreaView>
     );
@@ -277,6 +295,7 @@ function GameApp() {
     const correctCount = answers.filter((item) => item.isCorrect).length;
     const missed = answers.filter((item) => !item.isCorrect).slice(0, 3);
     const resultCard = buildResultCard(answers);
+    const playerRank = getPlayerRank(score, correctCount, bestStreak);
 
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
@@ -285,7 +304,8 @@ function GameApp() {
           <Mascot message="Tur bitti! Hatalar öğrenme kartına dönüştü; rekorunu da kaydettim." />
           <Text style={styles.title}>Öğrenme turu bitti!</Text>
           <Text style={styles.resultScore}>{score} puan</Text>
-          <Text style={styles.subtitle}>{correctCount}/{answers.length} doğru · En iyi seri: {bestStreak}</Text>
+          <Text style={styles.rankBadge}>{playerRank}</Text>
+          <Text style={styles.subtitle}>{correctCount}/{answers.length} doğru · En iyi seri: {bestStreak} · Kalan can: {lives}</Text>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{resultCard.title}</Text>
             <Text style={styles.summaryText}>{resultCard.body}</Text>
@@ -318,6 +338,7 @@ function GameApp() {
     <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
       <View style={styles.header}>
         <Text style={styles.score}>Skor: {score}</Text>
+        <Text style={styles.score}>Can: {'❤️'.repeat(lives)}</Text>
         <Text style={styles.score}>Seri: {streak}{streak >= 3 ? ' 🔥' : ''}</Text>
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
@@ -385,9 +406,10 @@ function RecordCard({ title, value }: { title: string; value: number }) {
   );
 }
 
-function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, shotQuality: ShotQuality) => void }) {
+function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, shotQuality: ShotQuality, shotMode: ShotMode) => void }) {
   const [selectedBasket, setSelectedBasket] = React.useState<Basket | null>(null);
   const [isShooting, setIsShooting] = React.useState(false);
+  const [shotMode, setShotMode] = React.useState<ShotMode>('safe');
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -404,6 +426,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
   React.useEffect(() => {
     setSelectedBasket(null);
     setIsShooting(false);
+    setShotMode('safe');
     x.value = 0;
     y.value = 0;
     scale.value = withSequence(withTiming(0.92, { duration: 90 }), withSpring(1));
@@ -426,9 +449,11 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     powerDirection.current = 1;
     aimDirection.current = 1;
     const timer = setInterval(() => {
-      const next = Math.max(0, Math.min(1, powerValue.current + (powerDirection.current * 0.045)));
+      const powerSpeed = shotMode === 'risk' ? 0.068 : 0.045;
+      const aimSpeed = shotMode === 'risk' ? 0.078 : 0.055;
+      const next = Math.max(0, Math.min(1, powerValue.current + (powerDirection.current * powerSpeed)));
       if (next >= 1 || next <= 0) {powerDirection.current *= -1;}
-      const nextAim = Math.max(0, Math.min(1, aimValue.current + (aimDirection.current * 0.055)));
+      const nextAim = Math.max(0, Math.min(1, aimValue.current + (aimDirection.current * aimSpeed)));
       if (nextAim >= 1 || nextAim <= 0) {aimDirection.current *= -1;}
       powerValue.current = next;
       aimValue.current = nextAim;
@@ -436,7 +461,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
       aim.value = withTiming(nextAim, { duration: 70 });
     }, 70);
     return () => clearInterval(timer);
-  }, [aim, power, question.id]);
+  }, [aim, power, question.id, shotMode]);
 
   const shoot = () => {
     if (!selectedBasket || isShooting) {return;}
@@ -448,7 +473,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     const powerDistance = Math.abs(currentPower - 0.72);
     const aimDistance = Math.abs(currentAim - 0.5);
     const rimScalePenalty = Math.abs(rimPulse.value - 1);
-    const shotDifficulty = powerDistance + aimDistance + (rimScalePenalty * 0.16);
+    const shotDifficulty = powerDistance + aimDistance + (rimScalePenalty * 0.16) + (shotMode === 'risk' ? 0.035 : 0);
     const shotQuality: ShotQuality = shotDifficulty < 0.07 ? 'swish' : shotDifficulty < 0.12 ? 'perfect' : shotDifficulty < 0.22 ? 'good' : 'miss';
     const missDrift = shotQuality === 'miss' ? (currentAim > 0.5 ? 38 : -38) : 0;
     x.value = withTiming(targetX + missDrift, { duration: 520 });
@@ -459,7 +484,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     );
     scale.value = withSequence(withTiming(0.72, { duration: 320 }), withTiming(0.46, { duration: 260 }));
     rotate.value = withTiming(choice === 'yes' ? -185 : 185, { duration: 620 });
-    setTimeout(() => onAnswer(choice, shotQuality), 680);
+    setTimeout(() => onAnswer(choice, shotQuality, shotMode), 680);
   };
 
   const ballStyle = useAnimatedStyle(() => ({
@@ -505,7 +530,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         <BasketCard label="HAYIR" color="#ef4444" side="right" selected={selectedBasket === 'no'} pulse={rimPulse} onPress={() => setSelectedBasket('no')} />
       </View>
       <View style={styles.powerPanel}>
-        <Text style={styles.powerLabel}>Atış gücü: yeşil bölgede ATIŞ yaparsan ekstra puan</Text>
+        <Text style={styles.powerLabel}>Atış gücü: yeşilde tut; risk modunda hız artar, bonus x2</Text>
         <View style={styles.powerTrack}>
           <View style={styles.powerSweetSpot} />
           <Animated.View style={[styles.powerNeedle, powerStyle]} />
@@ -530,6 +555,9 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
           <Text style={styles.choiceButtonText}>HAYIR potası</Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity style={[styles.riskButton, shotMode === 'risk' && styles.riskButtonActive]} onPress={() => setShotMode((mode) => mode === 'safe' ? 'risk' : 'safe')} disabled={isShooting}>
+        <Text style={styles.riskButtonText}>{shotMode === 'risk' ? 'RİSKLİ ATIŞ x2' : 'Güvenli Atış'}</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.shootButton, (!selectedBasket || isShooting) && styles.shootButtonDisabled]} onPress={shoot} disabled={!selectedBasket || isShooting}>
         <Text style={styles.shootButtonText}>{selectedBasket ? 'ATIŞ YAP' : 'Önce pota seç'}</Text>
       </TouchableOpacity>
@@ -580,6 +608,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: { color: '#bae6fd', fontWeight: '800', fontSize: 15 },
   smallNote: { color: '#94a3b8', textAlign: 'center', fontSize: 13, lineHeight: 19, paddingHorizontal: 12 },
   resultScore: { color: '#67e8f9', fontSize: 46, fontWeight: '900' },
+  rankBadge: { color: '#0f172a', backgroundColor: '#facc15', overflow: 'hidden', borderRadius: 18, paddingVertical: 8, paddingHorizontal: 14, fontWeight: '900', fontSize: 16, textAlign: 'center' },
   summaryCard: { alignSelf: 'stretch', backgroundColor: 'rgba(15,23,42,0.85)', borderColor: 'rgba(45,212,191,0.28)', borderWidth: 1, borderRadius: 22, padding: 16, gap: 8 },
   summaryTitle: { color: '#99f6e4', fontSize: 17, fontWeight: '900' },
   summaryText: { color: '#dbeafe', fontSize: 15, lineHeight: 22 },
@@ -658,6 +687,9 @@ const styles = StyleSheet.create({
   choiceButton: { backgroundColor: 'rgba(15,23,42,0.88)', borderColor: 'rgba(255,255,255,0.35)', borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13 },
   choiceButtonSelected: { backgroundColor: '#facc15', borderColor: '#fff7ed' },
   choiceButtonText: { color: '#f8fafc', fontWeight: '900', fontSize: 13 },
+  riskButton: { position: 'absolute', bottom: 70, zIndex: 6, backgroundColor: 'rgba(15,23,42,0.92)', borderRadius: 18, paddingVertical: 9, paddingHorizontal: 18, borderWidth: 2, borderColor: '#fbbf24' },
+  riskButtonActive: { backgroundColor: '#f97316', borderColor: '#ffedd5' },
+  riskButtonText: { color: '#fff7ed', fontSize: 13, fontWeight: '900', letterSpacing: 0.6 },
   shootButton: { position: 'absolute', bottom: 20, zIndex: 6, backgroundColor: '#14b8a6', borderRadius: 20, paddingVertical: 13, paddingHorizontal: 30, borderWidth: 3, borderColor: '#ccfbf1' },
   shootButtonDisabled: { opacity: 0.58, backgroundColor: '#64748b' },
   shootButtonText: { color: '#042f2e', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
