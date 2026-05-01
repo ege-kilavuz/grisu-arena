@@ -1,0 +1,7 @@
+name = "grisu-arena-leaderboard"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+
+[[kv_namespaces]]
+binding = "GRISU_LEADERBOARD"
+id = "00553e7700694afe8d4dc48b568513ec"
