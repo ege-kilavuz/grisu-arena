@@ -1,10 +1,10 @@
 import React from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -36,12 +36,20 @@ type ScoreBurstState = {
 
 type ShotQuality = 'perfect' | 'good' | 'miss';
 
+type LeaderboardEntry = {
+  id: string;
+  name: string;
+  score: number;
+  correct: number;
+};
+
 type ScoreRecords = {
   weekly: number;
   monthly: number;
   allTime: number;
   weekKey: string;
   monthKey: string;
+  leaderboard: LeaderboardEntry[];
 };
 
 function getPeriodKeys(date = new Date()) {
@@ -55,7 +63,7 @@ function getPeriodKeys(date = new Date()) {
 }
 
 function emptyRecords(): ScoreRecords {
-  return { weekly: 0, monthly: 0, allTime: 0, ...getPeriodKeys() };
+  return { weekly: 0, monthly: 0, allTime: 0, leaderboard: [], ...getPeriodKeys() };
 }
 
 function normalizeRecords(records: ScoreRecords): ScoreRecords {
@@ -64,6 +72,7 @@ function normalizeRecords(records: ScoreRecords): ScoreRecords {
     weekly: records.weekKey === keys.weekKey ? records.weekly : 0,
     monthly: records.monthKey === keys.monthKey ? records.monthly : 0,
     allTime: records.allTime ?? 0,
+    leaderboard: records.leaderboard ?? [],
     ...keys,
   };
 }
@@ -136,7 +145,7 @@ function GameApp() {
   const [score, setScore] = React.useState(0);
   const [streak, setStreak] = React.useState(0);
   const [bestStreak, setBestStreak] = React.useState(0);
-  const [feedback, setFeedback] = React.useState('Topu doğru potaya sürükle.');
+  const [feedback, setFeedback] = React.useState('Potayı seç, atış gücünü yeşilde yakala.');
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
   const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
   const [records, setRecords] = React.useState<ScoreRecords>(() => emptyRecords());
@@ -150,13 +159,20 @@ function GameApp() {
       .catch(() => setRecords(emptyRecords()));
   }, []);
 
-  async function saveRecord(finalScore: number) {
+  async function saveRecord(finalScore: number, correctCount: number) {
     const next = normalizeRecords(records);
+    const entry: LeaderboardEntry = {
+      id: `${Date.now()}-${finalScore}`,
+      name: `Oyuncu ${Math.min((next.leaderboard?.length ?? 0) + 1, 99)}`,
+      score: finalScore,
+      correct: correctCount,
+    };
     const updated = {
       ...next,
       weekly: Math.max(next.weekly, finalScore),
       monthly: Math.max(next.monthly, finalScore),
       allTime: Math.max(next.allTime, finalScore),
+      leaderboard: [...(next.leaderboard ?? []), entry].sort((a, b) => b.score - a.score).slice(0, 5),
     };
     setRecords(updated);
     await AsyncStorage.setItem(RECORDS_KEY, JSON.stringify(updated));
@@ -172,7 +188,7 @@ function GameApp() {
     setBestStreak(0);
     setAnswers([]);
     setScoreBurst(null);
-    setFeedback('Topu doğru potaya sürükle.');
+    setFeedback('Potayı seç, atış gücünü yeşilde yakala.');
     setScreen('game');
   }
 
@@ -200,7 +216,7 @@ function GameApp() {
 
     setTimeout(() => {
       if (index + 1 >= questions.length) {
-        saveRecord(finalScore).catch(() => undefined);
+        saveRecord(finalScore, answers.filter((item) => item.isCorrect).length + (isCorrect ? 1 : 0)).catch(() => undefined);
         setScreen('result');
       } else {setIndex((i) => i + 1);}
     }, 1050);
@@ -230,12 +246,18 @@ function GameApp() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <ScrollView contentContainerStyle={styles.resultContent}>
-          <Mascot message="Rekorlar burada! Her turda hem öğrenme hem isabet puanı toplayabilirsin." />
+          <Mascot message="Rekorlar ve yerel sıralama burada! Yarışma var ama hedefimiz doğru gri su bilgisi." />
           <Text style={styles.title}>Puan Rekorları</Text>
           <View style={styles.recordsGrid}>
             <RecordCard title="Bu Hafta" value={records.weekly} />
             <RecordCard title="Bu Ay" value={records.monthly} />
             <RecordCard title="Tüm Zamanlar" value={records.allTime} />
+          </View>
+          <View style={styles.leaderboardCard}>
+            <Text style={styles.summaryTitle}>Yerel Kullanıcı Sıralaması</Text>
+            {(records.leaderboard ?? []).length > 0 ? (records.leaderboard ?? []).map((entry, rank) => (
+              <Text key={entry.id} style={styles.leaderboardItem}>{rank + 1}. {entry.name} — {entry.score} puan · {entry.correct}/{GAME_LENGTH} doğru</Text>
+            )) : <Text style={styles.reviewItem}>Henüz kayıt yok. İlk turdan sonra sıralama oluşacak.</Text>}
           </View>
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Rekor Denemesi Başlat</Text>
@@ -361,20 +383,33 @@ function RecordCard({ title, value }: { title: string; value: number }) {
 }
 
 function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, shotQuality: ShotQuality) => void }) {
+  const [selectedBasket, setSelectedBasket] = React.useState<Basket | null>(null);
+  const [isShooting, setIsShooting] = React.useState(false);
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const scale = useSharedValue(1);
   const rotate = useSharedValue(0);
   const power = useSharedValue(0);
+  const rimPulse = useSharedValue(1);
   const powerDirection = React.useRef(1);
   const powerValue = React.useRef(0);
 
   React.useEffect(() => {
+    setSelectedBasket(null);
+    setIsShooting(false);
     x.value = 0;
     y.value = 0;
     scale.value = withSequence(withTiming(0.92, { duration: 90 }), withSpring(1));
     rotate.value = 0;
   }, [question.id, rotate, scale, x, y]);
+
+  React.useEffect(() => {
+    rimPulse.value = withRepeat(
+      withSequence(withTiming(1.18, { duration: 520 }), withTiming(0.78, { duration: 520 })),
+      -1,
+      true,
+    );
+  }, [rimPulse]);
 
   React.useEffect(() => {
     power.value = 0;
@@ -389,44 +424,25 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     return () => clearInterval(timer);
   }, [power, question.id]);
 
-  const decide = (dropX: number) => {
-    const choice: Basket = dropX < 0 ? 'yes' : 'no';
+  const shoot = () => {
+    if (!selectedBasket || isShooting) {return;}
+    setIsShooting(true);
+    const choice = selectedBasket;
     const targetX = choice === 'yes' ? -104 : 104;
     const currentPower = powerValue.current;
     const distanceFromSweetSpot = Math.abs(currentPower - 0.72);
-    const shotQuality: ShotQuality = distanceFromSweetSpot < 0.08 ? 'perfect' : distanceFromSweetSpot < 0.18 ? 'good' : 'miss';
+    const rimScalePenalty = Math.abs(rimPulse.value - 1);
+    const shotQuality: ShotQuality = distanceFromSweetSpot + (rimScalePenalty * 0.18) < 0.08 ? 'perfect' : distanceFromSweetSpot + (rimScalePenalty * 0.18) < 0.19 ? 'good' : 'miss';
     x.value = withTiming(targetX, { duration: 520 });
     y.value = withSequence(
       withTiming(-210, { duration: 260 }),
       withTiming(-126, { duration: 260 }),
-      withTiming(-100, { duration: 120 }),
+      withTiming(shotQuality === 'miss' ? -84 : -104, { duration: 120 }),
     );
     scale.value = withSequence(withTiming(0.72, { duration: 320 }), withTiming(0.46, { duration: 260 }));
     rotate.value = withTiming(choice === 'yes' ? -185 : 185, { duration: 620 });
     setTimeout(() => onAnswer(choice, shotQuality), 680);
-    setTimeout(() => {
-      x.value = withSpring(0);
-      y.value = withSpring(0);
-      scale.value = withSpring(1);
-      rotate.value = withSpring(0);
-    }, 980);
   };
-
-  const pan = Gesture.Pan()
-    .onUpdate((e) => {
-      x.value = e.translationX;
-      y.value = e.translationY;
-      rotate.value = e.translationX / 9;
-    })
-    .onEnd((e) => {
-      const strongThrow = Math.abs(e.translationX) > 70 || Math.abs(e.velocityX) > 500;
-      if (strongThrow) {runOnJS(decide)(e.translationX + e.velocityX * 0.05);}
-      else {
-        x.value = withSpring(0);
-        y.value = withSpring(0);
-        rotate.value = withSpring(0);
-      }
-    });
 
   const ballStyle = useAnimatedStyle(() => ({
     transform: [
@@ -463,40 +479,53 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         </View>
       </View>
       <View style={styles.basketsRow}>
-        <BasketCard label="EVET" color="#22c55e" side="left" />
-        <BasketCard label="HAYIR" color="#ef4444" side="right" />
+        <BasketCard label="EVET" color="#22c55e" side="left" selected={selectedBasket === 'yes'} pulse={rimPulse} onPress={() => setSelectedBasket('yes')} />
+        <BasketCard label="HAYIR" color="#ef4444" side="right" selected={selectedBasket === 'no'} pulse={rimPulse} onPress={() => setSelectedBasket('no')} />
       </View>
       <View style={styles.powerPanel}>
-        <Text style={styles.powerLabel}>Atış gücü: yeşil bölgede bırak, bonusu kap</Text>
+        <Text style={styles.powerLabel}>Atış gücü: yeşil bölgede ATIŞ yaparsan ekstra puan</Text>
         <View style={styles.powerTrack}>
           <View style={styles.powerSweetSpot} />
           <Animated.View style={[styles.powerNeedle, powerStyle]} />
         </View>
       </View>
-      <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.ball, ballStyle]}>
-          <View style={styles.ballSeamVertical} />
-          <View style={styles.ballSeamHorizontal} />
-          <View style={styles.ballSeamLeft} />
-          <View style={styles.ballSeamRight} />
-        </Animated.View>
-      </GestureDetector>
-      <Text style={styles.throwHint}>Topu doğru potaya sürükle; güç barını yeşilde yakalarsan bonus alırsın.</Text>
+      <Animated.View style={[styles.ball, ballStyle]}>
+        <View style={styles.ballSeamVertical} />
+        <View style={styles.ballSeamHorizontal} />
+        <View style={styles.ballSeamLeft} />
+        <View style={styles.ballSeamRight} />
+      </Animated.View>
+      <View style={styles.choiceControls}>
+        <TouchableOpacity style={[styles.choiceButton, selectedBasket === 'yes' && styles.choiceButtonSelected]} onPress={() => setSelectedBasket('yes')} disabled={isShooting}>
+          <Text style={styles.choiceButtonText}>EVET potası</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.choiceButton, selectedBasket === 'no' && styles.choiceButtonSelected]} onPress={() => setSelectedBasket('no')} disabled={isShooting}>
+          <Text style={styles.choiceButtonText}>HAYIR potası</Text>
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity style={[styles.shootButton, (!selectedBasket || isShooting) && styles.shootButtonDisabled]} onPress={shoot} disabled={!selectedBasket || isShooting}>
+        <Text style={styles.shootButtonText}>{selectedBasket ? 'ATIŞ YAP' : 'Önce pota seç'}</Text>
+      </TouchableOpacity>
+      <Text style={styles.throwHint}>Doğru cevap temel puan; yeşil güç + büyüyüp küçülen pota ekstra isabet puanı.</Text>
     </View>
   );
 }
 
-function BasketCard({ label, color, side }: { label: string; color: string; side: 'left' | 'right' }) {
+function BasketCard({ label, color, side, selected, pulse, onPress }: { label: string; color: string; side: 'left' | 'right'; selected: boolean; pulse: Animated.SharedValue<number>; onPress: () => void }) {
+  const rimStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: pulse.value }, { scaleY: 0.86 + ((pulse.value - 0.78) * 0.28) }],
+  }));
+
   return (
-    <View style={styles.basketSlot}>
-      <View style={[styles.backboard, { borderColor: color }]}>
+    <TouchableOpacity activeOpacity={0.86} onPress={onPress} style={[styles.basketSlot, selected && styles.basketSlotSelected]}>
+      <View style={[styles.backboard, { borderColor: color }, selected && { backgroundColor: `${color}30` }]}>
         <View style={[styles.backboardSquare, { borderColor: color }]} />
         <Text style={[styles.basketLabel, { color }]}>{label}</Text>
       </View>
       <View style={[styles.rimShadow, side === 'left' ? styles.leftRimShadow : styles.rightRimShadow]} />
-      <View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }]}>
+      <Animated.View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }, rimStyle]}>
         <View style={[styles.rimInner, { borderColor: color }]} />
-      </View>
+      </Animated.View>
       <View style={styles.net}>
         <View style={styles.netTop} />
         <View style={styles.netLinesRow}>
@@ -506,7 +535,7 @@ function BasketCard({ label, color, side }: { label: string; color: string; side
         </View>
         <View style={styles.netBottom} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -539,6 +568,8 @@ const styles = StyleSheet.create({
   recordTitle: { color: '#fde68a', fontWeight: '900', fontSize: 16 },
   recordValue: { color: '#67e8f9', fontWeight: '900', fontSize: 42 },
   recordHint: { color: '#94a3b8', fontWeight: '800', fontSize: 12 },
+  leaderboardCard: { alignSelf: 'stretch', backgroundColor: 'rgba(15,23,42,0.88)', borderColor: 'rgba(56,189,248,0.35)', borderWidth: 1, borderRadius: 20, padding: 16, gap: 8 },
+  leaderboardItem: { color: '#dbeafe', fontSize: 14.5, lineHeight: 22, fontWeight: '800' },
   header: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   score: { color: '#ecfeff', fontWeight: '900', fontSize: 16 },
   scoreBurst: { position: 'absolute', top: 74, alignSelf: 'center', minWidth: 104, height: 58, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#facc15', borderWidth: 4, borderColor: '#fff7ed', shadowColor: '#f97316', shadowOpacity: 0.55, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, elevation: 12, zIndex: 20 },
@@ -566,7 +597,8 @@ const styles = StyleSheet.create({
   baselineLabel: { position: 'absolute', top: 278, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(15,23,42,0.25)' },
   baselineText: { color: 'rgba(255,255,255,0.58)', fontWeight: '900', letterSpacing: 3, fontSize: 12 },
   basketsRow: { position: 'absolute', top: 112, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', zIndex: 2 },
-  basketSlot: { width: 132, height: 158, alignItems: 'center' },
+  basketSlot: { width: 132, height: 158, alignItems: 'center', borderRadius: 20, paddingTop: 2 },
+  basketSlotSelected: { backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: '#facc15' },
   backboard: { width: 108, height: 66, borderWidth: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(241,245,249,0.18)' },
   backboardSquare: { position: 'absolute', bottom: 10, width: 42, height: 27, borderWidth: 2, borderRadius: 4, opacity: 0.8 },
   basketLabel: { position: 'absolute', top: 7, fontSize: 16, fontWeight: '900', letterSpacing: 1 },
@@ -592,5 +624,12 @@ const styles = StyleSheet.create({
   powerTrack: { height: 18, borderRadius: 10, backgroundColor: '#7f1d1d', overflow: 'hidden', borderWidth: 2, borderColor: 'rgba(255,255,255,0.65)' },
   powerSweetSpot: { position: 'absolute', left: 132, width: 52, top: 0, bottom: 0, backgroundColor: '#22c55e' },
   powerNeedle: { position: 'absolute', left: 15, top: -4, width: 7, height: 24, borderRadius: 4, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#0f172a' },
-  throwHint: { position: 'absolute', bottom: 28, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
+  choiceControls: { position: 'absolute', bottom: 124, flexDirection: 'row', gap: 10, zIndex: 5 },
+  choiceButton: { backgroundColor: 'rgba(15,23,42,0.88)', borderColor: 'rgba(255,255,255,0.35)', borderWidth: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 13 },
+  choiceButtonSelected: { backgroundColor: '#facc15', borderColor: '#fff7ed' },
+  choiceButtonText: { color: '#0f172a', fontWeight: '900', fontSize: 13 },
+  shootButton: { position: 'absolute', bottom: 20, zIndex: 6, backgroundColor: '#14b8a6', borderRadius: 20, paddingVertical: 13, paddingHorizontal: 30, borderWidth: 3, borderColor: '#ccfbf1' },
+  shootButtonDisabled: { opacity: 0.58, backgroundColor: '#64748b' },
+  shootButtonText: { color: '#042f2e', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
+  throwHint: { position: 'absolute', bottom: 76, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
 });
