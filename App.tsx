@@ -2,33 +2,71 @@ import React from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
+  type SharedValue,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
 
 const BALL_SIZE = 118;
 const GAME_LENGTH = 12;
+const RECORDS_KEY = 'grisu-arena-records-v1';
 
 type Basket = 'yes' | 'no';
-type Screen = 'home' | 'game' | 'result';
+type Screen = 'home' | 'game' | 'result' | 'records';
 
 type AnswerRecord = {
   question: Question;
   choice: Basket;
   isCorrect: boolean;
+  madeShot: boolean;
 };
 
 type ScoreBurstState = {
   id: number;
   points: number;
+  label?: string;
 };
+
+type ScoreRecords = {
+  weekly: number;
+  monthly: number;
+  allTime: number;
+  weekKey: string;
+  monthKey: string;
+};
+
+function getPeriodKeys(date = new Date()) {
+  const start = new Date(date.getFullYear(), 0, 1);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const week = Math.ceil((((date.getTime() - start.getTime()) / dayMs) + start.getDay() + 1) / 7);
+  return {
+    weekKey: `${date.getFullYear()}-W${week}`,
+    monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+  };
+}
+
+function emptyRecords(): ScoreRecords {
+  return { weekly: 0, monthly: 0, allTime: 0, ...getPeriodKeys() };
+}
+
+function normalizeRecords(records: ScoreRecords): ScoreRecords {
+  const keys = getPeriodKeys();
+  return {
+    weekly: records.weekKey === keys.weekKey ? records.weekly : 0,
+    monthly: records.monthKey === keys.monthKey ? records.monthly : 0,
+    allTime: records.allTime ?? 0,
+    ...keys,
+  };
+}
 
 function buildResultCard(answers: AnswerRecord[]) {
   const missed = answers.filter((item) => !item.isCorrect);
@@ -101,6 +139,28 @@ function GameApp() {
   const [feedback, setFeedback] = React.useState('Topu doğru potaya sürükle.');
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
   const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
+  const [records, setRecords] = React.useState<ScoreRecords>(() => emptyRecords());
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(RECORDS_KEY)
+      .then((raw) => {
+        if (!raw) {return;}
+        setRecords(normalizeRecords(JSON.parse(raw) as ScoreRecords));
+      })
+      .catch(() => setRecords(emptyRecords()));
+  }, []);
+
+  async function saveRecord(finalScore: number) {
+    const next = normalizeRecords(records);
+    const updated = {
+      ...next,
+      weekly: Math.max(next.weekly, finalScore),
+      monthly: Math.max(next.monthly, finalScore),
+      allTime: Math.max(next.allTime, finalScore),
+    };
+    setRecords(updated);
+    await AsyncStorage.setItem(RECORDS_KEY, JSON.stringify(updated));
+  }
 
   const question = questions[index];
 
@@ -116,27 +176,33 @@ function GameApp() {
     setScreen('game');
   }
 
-  function answerQuestion(choice: Basket) {
+  function answerQuestion(choice: Basket, madeShot: boolean) {
     const current = questions[index];
     if (!current) {return;}
     const isCorrect = (choice === 'yes') === current.answer;
-    setAnswers((items) => [...items, { question: current, choice, isCorrect }]);
+    setAnswers((items) => [...items, { question: current, choice, isCorrect, madeShot }]);
+    const nextStreak = isCorrect ? streak + 1 : 0;
+    const knowledgePoints = isCorrect ? 10 + Math.min(nextStreak * 2, 10) : 0;
+    const shotBonus = isCorrect && madeShot ? 5 : 0;
+    const earnedPoints = knowledgePoints + shotBonus;
+    const finalScore = score + earnedPoints;
+
     if (isCorrect) {
-      const nextStreak = streak + 1;
-      const earnedPoints = 10 + Math.min(nextStreak * 2, 10);
       setStreak(nextStreak);
       setBestStreak((b) => Math.max(b, nextStreak));
-      setScore((s) => s + earnedPoints);
-      setScoreBurst({ id: Date.now(), points: earnedPoints });
-      setFeedback(`✅ Doğru! ${current.explanation}`);
+      setScore(finalScore);
+      setScoreBurst({ id: Date.now(), points: earnedPoints, label: shotBonus ? 'İsabet bonusu!' : 'Doğru seçim' });
+      setFeedback(`${madeShot ? '🏀' : '✅'} Doğru taraf! ${shotBonus ? '+5 isabet bonusu aldın. ' : 'Çemberi kaçırdın ama doğru seçimden puan aldın. '}${current.explanation}`);
     } else {
       setStreak(0);
-      setFeedback(`❌ Yanlış. ${current.explanation}`);
+      setFeedback(`❌ Yanlış taraf. ${current.explanation}`);
     }
 
     setTimeout(() => {
-      if (index + 1 >= questions.length) {setScreen('result');}
-      else {setIndex((i) => i + 1);}
+      if (index + 1 >= questions.length) {
+        saveRecord(finalScore).catch(() => undefined);
+        setScreen('result');
+      } else {setIndex((i) => i + 1);}
     }, 1050);
   }
 
@@ -147,11 +213,37 @@ function GameApp() {
           <Text style={styles.logo}>🏀💧</Text>
           <Text style={styles.title}>GriSu Arena</Text>
           <Text style={styles.subtitle}>Soru topunu EVET veya HAYIR potasına at, gri suyu güvenli ve doğru kullanmayı öğren.</Text>
+          <Mascot message="Ben Damlacan! Doğru suyu doğru potaya atalım." />
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Oyuna Başla</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('records')}>
+            <Text style={styles.secondaryButtonText}>Haftalık / Aylık Puanlar</Text>
+          </TouchableOpacity>
           <Text style={styles.smallNote}>Eğitim odaklıdır: geniş soru havuzundan her oyunda {GAME_LENGTH} farklı soru seçilir.</Text>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === 'records') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
+        <ScrollView contentContainerStyle={styles.resultContent}>
+          <Mascot message="Rekorlar burada! Her turda hem öğrenme hem isabet puanı toplayabilirsin." />
+          <Text style={styles.title}>Puan Rekorları</Text>
+          <View style={styles.recordsGrid}>
+            <RecordCard title="Bu Hafta" value={records.weekly} />
+            <RecordCard title="Bu Ay" value={records.monthly} />
+            <RecordCard title="Tüm Zamanlar" value={records.allTime} />
+          </View>
+          <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
+            <Text style={styles.primaryButtonText}>Rekor Denemesi Başlat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
+            <Text style={styles.secondaryButtonText}>Ana Menü</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -165,6 +257,7 @@ function GameApp() {
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <ScrollView contentContainerStyle={styles.resultContent}>
           <Text style={styles.logo}>🏆</Text>
+          <Mascot message="Tur bitti! Hatalar öğrenme kartına dönüştü; rekorunu da kaydettim." />
           <Text style={styles.title}>Öğrenme turu bitti!</Text>
           <Text style={styles.resultScore}>{score} puan</Text>
           <Text style={styles.subtitle}>{correctCount}/{answers.length} doğru · En iyi seri: {bestStreak}</Text>
@@ -185,6 +278,9 @@ function GameApp() {
           <TouchableOpacity style={styles.primaryButton} onPress={startGame}>
             <Text style={styles.primaryButtonText}>Yeni Eğitim Turu</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('records')}>
+            <Text style={styles.secondaryButtonText}>Puan Rekorları</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
             <Text style={styles.secondaryButtonText}>Ana Menü</Text>
           </TouchableOpacity>
@@ -200,14 +296,14 @@ function GameApp() {
         <Text style={styles.score}>Seri: {streak}</Text>
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
-      {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} /> : null}
+      {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} label={scoreBurst.label} /> : null}
       <Text style={styles.feedback} numberOfLines={3}>{feedback}</Text>
       {question ? <Court question={question} onAnswer={answerQuestion} /> : null}
     </SafeAreaView>
   );
 }
 
-function ScoreBurst({ points }: { points: number }) {
+function ScoreBurst({ points, label }: { points: number; label?: string }) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(18);
   const scale = useSharedValue(0.72);
@@ -235,15 +331,42 @@ function ScoreBurst({ points }: { points: number }) {
       <View style={styles.scoreBurstSparkTwo} />
       <View style={styles.scoreBurstSparkThree} />
       <Text style={styles.scoreBurstText}>+{points}</Text>
+      {label ? <Text style={styles.scoreBurstLabel}>{label}</Text> : null}
     </Animated.View>
   );
 }
 
-function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket) => void }) {
+function Mascot({ message }: { message: string }) {
+  return (
+    <View style={styles.mascotCard}>
+      <View style={styles.mascotBubble}>
+        <Text style={styles.mascotFace}>🦦</Text>
+      </View>
+      <View style={styles.mascotTextBox}>
+        <Text style={styles.mascotName}>Damlacan</Text>
+        <Text style={styles.mascotMessage}>{message}</Text>
+      </View>
+    </View>
+  );
+}
+
+function RecordCard({ title, value }: { title: string; value: number }) {
+  return (
+    <View style={styles.recordCard}>
+      <Text style={styles.recordTitle}>{title}</Text>
+      <Text style={styles.recordValue}>{value}</Text>
+      <Text style={styles.recordHint}>en iyi puan</Text>
+    </View>
+  );
+}
+
+function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, madeShot: boolean) => void }) {
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const scale = useSharedValue(1);
   const rotate = useSharedValue(0);
+  const rimPulse = useSharedValue(1);
+  const pulseStartedAt = React.useRef(Date.now());
 
   React.useEffect(() => {
     x.value = 0;
@@ -252,9 +375,21 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     rotate.value = 0;
   }, [question.id, rotate, scale, x, y]);
 
+  React.useEffect(() => {
+    pulseStartedAt.current = Date.now();
+    rimPulse.value = withRepeat(
+      withSequence(withTiming(1.18, { duration: 520 }), withTiming(0.74, { duration: 520 })),
+      -1,
+      true,
+    );
+  }, [rimPulse]);
+
   const decide = (dropX: number) => {
     const choice: Basket = dropX < 0 ? 'yes' : 'no';
     const targetX = choice === 'yes' ? -104 : 104;
+    const phase = ((Date.now() - pulseStartedAt.current) % 1040) / 1040;
+    const movingWindow = Math.sin(phase * Math.PI * 2);
+    const madeShot = movingWindow > -0.1 && movingWindow < 0.65;
     x.value = withTiming(targetX, { duration: 520 });
     y.value = withSequence(
       withTiming(-210, { duration: 260 }),
@@ -263,7 +398,7 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     );
     scale.value = withSequence(withTiming(0.72, { duration: 320 }), withTiming(0.46, { duration: 260 }));
     rotate.value = withTiming(choice === 'yes' ? -185 : 185, { duration: 620 });
-    setTimeout(() => onAnswer(choice), 680);
+    setTimeout(() => onAnswer(choice, madeShot), 680);
     setTimeout(() => {
       x.value = withSpring(0);
       y.value = withSpring(0);
@@ -319,8 +454,8 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
         </View>
       </View>
       <View style={styles.basketsRow}>
-        <BasketCard label="EVET" color="#22c55e" side="left" />
-        <BasketCard label="HAYIR" color="#ef4444" side="right" />
+        <BasketCard label="EVET" color="#22c55e" side="left" pulse={rimPulse} />
+        <BasketCard label="HAYIR" color="#ef4444" side="right" pulse={rimPulse} />
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.ball, ballStyle]}>
@@ -335,7 +470,11 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
   );
 }
 
-function BasketCard({ label, color, side }: { label: string; color: string; side: 'left' | 'right' }) {
+function BasketCard({ label, color, side, pulse }: { label: string; color: string; side: 'left' | 'right'; pulse: SharedValue<number> }) {
+  const rimStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: pulse.value }, { scaleY: 0.82 + ((pulse.value - 0.74) * 0.38) }],
+  }));
+
   return (
     <View style={styles.basketSlot}>
       <View style={[styles.backboard, { borderColor: color }]}>
@@ -343,9 +482,9 @@ function BasketCard({ label, color, side }: { label: string; color: string; side
         <Text style={[styles.basketLabel, { color }]}>{label}</Text>
       </View>
       <View style={[styles.rimShadow, side === 'left' ? styles.leftRimShadow : styles.rightRimShadow]} />
-      <View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }]}>
+      <Animated.View style={[styles.rim, { borderColor: color, backgroundColor: `${color}33` }, rimStyle]}>
         <View style={[styles.rimInner, { borderColor: color }]} />
-      </View>
+      </Animated.View>
       <View style={styles.net}>
         <View style={styles.netTop} />
         <View style={styles.netLinesRow}>
@@ -377,10 +516,22 @@ const styles = StyleSheet.create({
   summaryTitle: { color: '#99f6e4', fontSize: 17, fontWeight: '900' },
   summaryText: { color: '#dbeafe', fontSize: 15, lineHeight: 22 },
   reviewItem: { color: '#dbeafe', fontSize: 14.5, lineHeight: 22 },
+  mascotCard: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', gap: 10, backgroundColor: 'rgba(20,184,166,0.12)', borderColor: 'rgba(45,212,191,0.32)', borderWidth: 1, borderRadius: 22, padding: 12 },
+  mascotBubble: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#ccfbf1', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#14b8a6' },
+  mascotFace: { fontSize: 34 },
+  mascotTextBox: { flex: 1, gap: 2 },
+  mascotName: { color: '#99f6e4', fontWeight: '900', fontSize: 15 },
+  mascotMessage: { color: '#dbeafe', fontSize: 13.5, lineHeight: 19, fontWeight: '700' },
+  recordsGrid: { alignSelf: 'stretch', gap: 12 },
+  recordCard: { backgroundColor: 'rgba(15,23,42,0.88)', borderColor: 'rgba(251,191,36,0.35)', borderWidth: 1, borderRadius: 20, padding: 16, alignItems: 'center' },
+  recordTitle: { color: '#fde68a', fontWeight: '900', fontSize: 16 },
+  recordValue: { color: '#67e8f9', fontWeight: '900', fontSize: 42 },
+  recordHint: { color: '#94a3b8', fontWeight: '800', fontSize: 12 },
   header: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   score: { color: '#ecfeff', fontWeight: '900', fontSize: 16 },
   scoreBurst: { position: 'absolute', top: 74, alignSelf: 'center', minWidth: 104, height: 58, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#facc15', borderWidth: 4, borderColor: '#fff7ed', shadowColor: '#f97316', shadowOpacity: 0.55, shadowOffset: { width: 0, height: 8 }, shadowRadius: 16, elevation: 12, zIndex: 20 },
   scoreBurstText: { color: '#7c2d12', fontSize: 28, fontWeight: '900', letterSpacing: 0.5 },
+  scoreBurstLabel: { color: '#7c2d12', fontSize: 10, fontWeight: '900', marginTop: -3 },
   scoreBurstSparkOne: { position: 'absolute', top: -12, left: 8, width: 13, height: 13, borderRadius: 7, backgroundColor: '#fb7185' },
   scoreBurstSparkTwo: { position: 'absolute', right: -10, top: 18, width: 16, height: 16, borderRadius: 8, backgroundColor: '#22c55e' },
   scoreBurstSparkThree: { position: 'absolute', bottom: -9, left: 34, width: 11, height: 11, borderRadius: 6, backgroundColor: '#38bdf8' },
