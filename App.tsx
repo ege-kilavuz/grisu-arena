@@ -14,7 +14,11 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
+import '../src/config/firebaseConfig';
 import QuizDemo from './src/screens/QuizDemo';
+import AdminLogin from './src/screens/AdminLogin';
+import AdminPanel from './src/screens/AdminPanel';
+import { useAdminAuth } from './src/hooks/useAdminAuth';
 
 const BALL_SIZE = 92;
 const GAME_LENGTH = 12;
@@ -24,7 +28,7 @@ const PLAYER_NAME_KEY = 'grisu-arena-player-name-v1';
 const ONLINE_LEADERBOARD_URL = process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? ''; // POST/GET dönen online skor API adresi.
 
 type Basket = 'yes' | 'no';
-type Screen = 'home' | 'game' | 'result' | 'records' | 'demo';
+type Screen = 'home' | 'game' | 'result' | 'records' | 'demo' | 'adminLogin' | 'adminPanel';
 
 type AnswerRecord = {
   question: Question;
@@ -167,6 +171,13 @@ function getPlayerRank(score: number, correctCount: number, bestStreak: number) 
 
 function GameApp() {
   const [screen, setScreen] = React.useState<Screen>('home');
+  const { user: adminUser } = useAdminAuth();
+
+  React.useEffect(() => {
+    if (screen === 'adminLogin' && adminUser) {
+      setScreen('adminPanel');
+    }
+  }, [screen, adminUser]);
   const [demoActive, setDemoActive] = React.useState(false);
   const [questions, setQuestions] = React.useState<Question[]>(() => pickQuestions(GAME_LENGTH));
   const [index, setIndex] = React.useState(0);
@@ -323,6 +334,9 @@ function GameApp() {
           <TouchableOpacity style={styles.demoButton} onPress={() => setScreen('demo')}>
             <Text style={styles.demoButtonText}>Demo</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.adminButton} onPress={() => setScreen('adminLogin')}>
+            <Text style={styles.adminButtonText}>Admin</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -360,6 +374,22 @@ function GameApp() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
         <QuizDemo onBack={() => setScreen('home')} />
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === 'adminLogin') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
+        <AdminLogin onBack={() => setScreen('home')} />
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === 'adminPanel') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
+        <AdminPanel onBack={() => setScreen('home')} />
       </SafeAreaView>
     );
   }
@@ -777,4 +807,6 @@ const styles = StyleSheet.create({
   throwHint: { position: 'absolute', bottom: 236, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
   demoButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#4a90e2', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6 },
   demoButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  adminButton: { position: 'absolute', bottom: 16, right: 90, backgroundColor: '#9ca3af', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6 },
+  adminButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });
