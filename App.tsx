@@ -320,6 +320,9 @@ function GameApp() {
             <Text style={styles.secondaryButtonText}>Online Sıralama / Rekorlar</Text>
           </TouchableOpacity>
           <Text style={styles.smallNote}>Eğitim odaklıdır: can sistemi, ateş modu ve riskli atışlar öğrenmeyi daha akıcı yapar.</Text>
+          <TouchableOpacity style={styles.demoButton} onPress={() => setScreen('demo')}>
+            <Text style={styles.demoButtonText}>Demo</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -772,4 +775,6 @@ const styles = StyleSheet.create({
   shootButtonDisabled: { opacity: 0.58, backgroundColor: '#64748b' },
   shootButtonText: { color: '#042f2e', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
   throwHint: { position: 'absolute', bottom: 236, color: '#0f172a', fontWeight: '900', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.72)', paddingVertical: 7, paddingHorizontal: 12, borderRadius: 14 },
+  demoButton: { position: 'absolute', bottom: 16, right: 16, backgroundColor: '#4a90e2', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6 },
+  demoButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });
