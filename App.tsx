@@ -14,6 +14,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
+import QuizDemo from './src/screens/QuizDemo';
 
 const BALL_SIZE = 92;
 const GAME_LENGTH = 12;
@@ -23,7 +24,7 @@ const PLAYER_NAME_KEY = 'grisu-arena-player-name-v1';
 const ONLINE_LEADERBOARD_URL = process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? ''; // POST/GET dönen online skor API adresi.
 
 type Basket = 'yes' | 'no';
-type Screen = 'home' | 'game' | 'result' | 'records';
+type Screen = 'home' | 'game' | 'result' | 'records' | 'demo';
 
 type AnswerRecord = {
   question: Question;
@@ -166,6 +167,7 @@ function getPlayerRank(score: number, correctCount: number, bestStreak: number) 
 
 function GameApp() {
   const [screen, setScreen] = React.useState<Screen>('home');
+  const [demoActive, setDemoActive] = React.useState(false);
   const [questions, setQuestions] = React.useState<Question[]>(() => pickQuestions(GAME_LENGTH));
   const [index, setIndex] = React.useState(0);
   const [score, setScore] = React.useState(0);
@@ -347,6 +349,14 @@ function GameApp() {
             <Text style={styles.secondaryButtonText}>Ana Menü</Text>
           </TouchableOpacity>
         </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === 'demo') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
+        <QuizDemo onBack={() => setScreen('home')} />
       </SafeAreaView>
     );
   }

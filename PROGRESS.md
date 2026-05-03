@@ -10,10 +10,11 @@ Upgrade **Grisu Arena** from its current state (~6.6/10) to a comprehensive, eng
 ## Milestones
 
 ### 1️⃣ Core Feature Pack (≈ 2‑3 weeks)
-1. **Modular Question Engine** – Separate question types (MCQ, fill‑in, matching) into reusable components.
-2. **Real‑time Multiplayer** – Move from single‑player to synchronous multiplayer using WebRTC/DataChannels or Socket.io.
+1. ✅ **Modular Question Engine** – Separate question types (MCQ, fill‑in, matching) into reusable components. *(Completed: QuestionEngine.ts created with types and evaluation logic)*
+2. ✅ **Question Components** – MCQ, Fill, Match React Native components. *(Completed: MCQQuestion, FillQuestion, MatchQuestion components created)*
 3. **Progress & Scoring** – Persist user score, levels, and unlockable content.
-4. **Leaderboard & Badges** – Public ranking + user‑specific achievements.
+4. ✅ **Demo Screen** – Test screen with sample questions and home button. *(Completed: QuizDemo.tsx created, button added to home screen)*
+5. **Leaderboard & Badges** – Public ranking + user‑specific achievements.
 
 ### 2️⃣ Content Pipeline (≈ 1‑2 weeks)
 1. **Open‑API Question Bank** – Load questions from a JSON/SQLite file or API.
@@ -26,9 +27,9 @@ Upgrade **Grisu Arena** from its current state (~6.6/10) to a comprehensive, eng
 3. **Localisation** – Turkish‑English bilingual (future‑proof for other languages).
 
 ### 4️⃣ Testing & QA (≈ 1 week)
-1. **Unit Tests** – For Question engine, score logic, multiplayer state.
+1. **Unit Tests** – For Question engine, score logic.
 2. **End‑to‑End Tests** – Cypress or Playwright to validate flows.
-3. **Load/Performance** – Simulate multi‑user sessions.
+3. **Performance** – Test on different devices.
 
 ### 5️⃣ Packaging & Distribution (≈ 1 week)
 1. **Bundle for Expo / Capacitor** – Web, iOS, Android builds.
@@ -37,22 +38,22 @@ Upgrade **Grisu Arena** from its current state (~6.6/10) to a comprehensive, eng
 
 ## Resources & Dependencies
 - **React Native / Expo** (current stack)
-- **Socket.io** (WebSocket abstraction for multiplayer)
 - **Redux / Zustand** for state management
 - **React Navigation** (existing)
 - **Testing**: Jest + React Native Testing Library
 - **CI/CD**: GitHub Actions – build & publish to Expo publish / App Store
 
 ## Deliverables
-| # | Deliverable | Acceptance | Owner |
-|---|-------------|------------|-------|
-| 1 | Modular question components | 100% unit‑tested | you |
-| 2 | Multiplayer demo | 5+ concurrent users | you |
-| 3 | Content editor | CRUD UI, import/export | you |
-| 4 | Leaderboard & badging | Persistent in DB, UI shows | you |
-| 5 | Locally‑hosted API (optional) | 50+ sample questions | you |
-| 6 | Test suites Passed | No critical bugs | you |
-| 7 | Published builds | App Store & Google Play listing | you |
+| # | Deliverable | Acceptance | Status |
+|---|-------------|------------|--------|
+| 1 | ✅ Modular question engine | Types + evaluation logic | **Completed** |
+| 2 | ✅ Question components | MCQ, Fill, Match RN components | **Completed** |
+| 3 | ✅ Demo screen | QuizDemo.tsx + home button | **Completed** |
+| 4 | Content editor | CRUD UI, import/export | Pending |
+| 5 | Leaderboard & badging | Persistent in DB, UI shows | Pending |
+| 6 | Locally‑hosted API (optional) | 50+ sample questions | Pending |
+| 7 | Test suites | No critical bugs | Pending |
+| 8 | Published builds | App Store & Google Play listing | Pending |
 
 ## Next Steps
 - **Create the file** `PROGRESS.md` in the repo root with this content.
