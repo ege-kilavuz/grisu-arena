@@ -12,9 +12,7 @@ Upgrade **Grisu Arena** from its current state (~6.6/10) to a comprehensive, eng
 ### 1️⃣ Core Feature Pack (≈ 2‑3 weeks)
 1. ✅ **Modular Question Engine** – Separate question types (MCQ, fill‑in, matching) into reusable components. *(Completed: QuestionEngine.ts created with types and evaluation logic)*
 2. ✅ **Question Components** – MCQ, Fill, Match React Native components. *(Completed: MCQQuestion, FillQuestion, MatchQuestion components created)*
-3. **Progress & Scoring** – Persist user score, levels, and unlockable content.
-4. ✅ **Demo Screen** – Test screen with sample questions and home button. *(Completed: QuizDemo.tsx created, button added to home screen)*
-5. **Leaderboard & Badges** – Public ranking + user‑specific achievements.
+3. ✅ **Demo Screen** – Test screen with sample questions and home button. *(Completed: QuizDemo.tsx created, button added to home screen)*
 
 ### 2️⃣ Content Pipeline (≈ 1‑2 weeks)
 1. **Open‑API Question Bank** – Load questions from a JSON/SQLite file or API.
