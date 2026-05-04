@@ -14,9 +14,9 @@ Grisu Arena'nın mevcut oyun yapısını (2 basket, risk/normal atış, puan ve 
 - [ ] **Multimedya Destek**: Soru metnine resim/video ekleme imkânı (örnek: su tasarrufu infografikleri).
 
 ### 2️⃣ Skor, Seviye & Rozet Sistemi
-- [ ] **Seviye ve Seri Bonusları**: Doğru cevapların art arda gelmesiyle seviye atlama ve ekstra puan.
-- [ ] **Rozetler**: "Risk Ustası", "Hızlı Öğrenen", "Gri Su Koruyucusu" gibi hedef odaklı rozetler.
-- [ ] **Görev Sistemi**: Günlük/haftalık mini görevler (örnek: 3 riskli atış başarılı) ve ödüller.
+- [x] **Seviye ve Seri Bonusları**: Doğru cevapların art arda gelmesiyle seviye atlama ve ekstra puan.
+- [x] **Rozetler**: "Risk Ustası", "Hızlı Öğrenen", "Gri Su Koruyucusu" gibi hedef odaklı rozetler.
+- [x] **Görev Sistemi**: Günlük/haftalık mini görevler (örnek: 3 riskli atış başarılı) ve ödüller.
 
 ### 3️⃣ Ses & Animasyon ile Eğlence Katkısı
 - [ ] **Atış Ses Efektleri**: Başarılı, başarısız, riskli atış sesleri.

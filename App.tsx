@@ -1,4 +1,5 @@
 import React from 'react';
+import { Audio } from 'expo-av';
 import { ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -189,6 +190,7 @@ function GameApp() {
   const [feedback, setFeedback] = React.useState('Potayı seç, atış gücünü yeşilde yakala.');
   const [answers, setAnswers] = React.useState<AnswerRecord[]>([]);
   const [scoreBurst, setScoreBurst] = React.useState<ScoreBurstState | null>(null);
+  const [showGlow, setShowGlow] = React.useState(false);
   const [records, setRecords] = React.useState<ScoreRecords>(() => emptyRecords());
   const [playerName, setPlayerName] = React.useState('');
   const [onlineScores, setOnlineScores] = React.useState<OnlineScore[]>([]);
@@ -289,6 +291,8 @@ function GameApp() {
     const nextLives = isCorrect ? lives : Math.max(0, lives - 1);
 
     if (isCorrect) {
+      setShowGlow(true);
+      setTimeout(() => setShowGlow(false), 1200);
       setStreak(nextStreak);
       setBestStreak((b) => Math.max(b, nextStreak));
       setScore(finalScore);
@@ -459,6 +463,7 @@ function GameApp() {
         <Text style={styles.score}>{index + 1}/{questions.length}</Text>
       </View>
       {scoreBurst ? <ScoreBurst key={scoreBurst.id} points={scoreBurst.points} label={scoreBurst.label} /> : null}
+      <CorrectAnswerGlow visible={showGlow} />
       <Text style={styles.feedback} numberOfLines={2}>{feedback}</Text>
       {question ? <Court question={question} onAnswer={answerQuestion} /> : null}
     </SafeAreaView>
@@ -522,6 +527,69 @@ function RecordCard({ title, value }: { title: string; value: number }) {
   );
 }
 
+// Wind background effect
+function WindParticle({ wind, startY, size, duration }: { wind: number; startY: number; size: number; duration: number }) {
+  const translateX = useSharedValue(wind > 0 ? -100 : 100);
+  const opacity = useSharedValue(0.6);
+
+  React.useEffect(() => {
+    const moveDistance = wind > 0 ? 400 : -400;
+    const adjustedDuration = duration + Math.abs(wind) * 2000;
+    translateX.value = withRepeat(
+      withTiming(moveDistance, { duration: adjustedDuration }),
+      -1,
+      false
+    );
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.8, { duration: adjustedDuration / 2 }),
+        withTiming(0.2, { duration: adjustedDuration / 2 })
+      ),
+      -1,
+      true
+    );
+  }, [wind, duration, translateX, opacity]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.windParticle,
+        {
+          width: size,
+          height: size,
+          top: `${startY}%`,
+          left: wind > 0 ? -20 : '100%',
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function WindEffect({ wind }: { wind: number }) {
+  const particles = React.useRef(
+    Array.from({ length: 12 }, () => ({
+      id: Math.random(),
+      startY: Math.random() * 100,
+      size: 4 + Math.random() * 6,
+      duration: 2000 + Math.random() * 3000,
+    }))
+  ).current;
+
+  return (
+    <View style={styles.windContainer} pointerEvents="none">
+      {particles.map(p => (
+        <WindParticle key={p.id} wind={wind} {...p} />
+      ))}
+    </View>
+  );
+}
+
 function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: Basket, shotQuality: ShotQuality, shotMode: ShotMode) => void }) {
   const [selectedBasket, setSelectedBasket] = React.useState<Basket | null>(null);
   const [isShooting, setIsShooting] = React.useState(false);
@@ -579,7 +647,56 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     return () => clearInterval(timer);
   }, [aim, power, question.id, shotMode]);
 
-  const shoot = () => {
+  const shoot = async () => {
+    // Determine which sound to play based on shot outcome
+    const playSound = async () => {
+      let source;
+      if (shotMode === 'risk') {
+        source = require('./assets/risk.mp3');
+      } else if (shotQuality === 'miss') {
+        source = require('./assets/fail.mp3');
+      } else {
+        source = require('./assets/success.mp3');
+      }
+      try {
+        const { sound } = await Audio.Sound.createAsync(source);
+        await sound.playAsync();
+        // Unload after playback finishes to free resources
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.unloadAsync();
+          }
+        });
+      } catch (e) {
+        // Silently ignore sound errors to avoid breaking gameplay
+        console.warn('Sound playback failed', e);
+      }
+    };
+    // Fire and forget
+    playSound();
+    if (!selectedBasket || isShooting) {return;}
+    setIsShooting(true);
+    const choice = selectedBasket;
+    const targetX = choice === 'yes' ? -104 : 104;
+    const currentPower = powerValue.current;
+    const currentAim = aimValue.current + wind;
+    const powerDistance = Math.abs(currentPower - 0.72);
+    const aimDistance = Math.abs(currentAim - 0.5);
+    const rimScalePenalty = Math.abs(rimPulse.value - 1);
+    const shotDifficulty = powerDistance + aimDistance + (rimScalePenalty * 0.16) + (shotMode === 'risk' ? 0.035 : 0);
+    const shotQuality: ShotQuality = shotDifficulty < 0.07 ? 'swish' : shotDifficulty < 0.12 ? 'perfect' : shotDifficulty < 0.22 ? 'good' : 'miss';
+    const missDrift = shotQuality === 'miss' ? (currentAim > 0.5 ? 38 : -38) : 0;
+    x.value = withTiming(targetX + missDrift, { duration: 520 });
+    y.value = withSequence(
+      withTiming(-210, { duration: 260 }),
+      withTiming(-126, { duration: 260 }),
+      withTiming(shotQuality === 'miss' ? -84 : -104, { duration: 120 }),
+    );
+    scale.value = withSequence(withTiming(0.72, { duration: 320 }), withTiming(0.46, { duration: 260 }));
+    rotate.value = withTiming(choice === 'yes' ? -185 : 185, { duration: 620 });
+    setTimeout(() => onAnswer(choice, shotQuality, shotMode), 680);
+  };
+
     if (!selectedBasket || isShooting) {return;}
     setIsShooting(true);
     const choice = selectedBasket;
@@ -620,8 +737,17 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
     transform: [{ translateX: aim.value * 196 }],
   }));
 
+  const powerFillStyle = useAnimatedStyle(() => ({
+    width: `${power.value * 100}%`,
+  }));
+
+  const aimFillStyle = useAnimatedStyle(() => ({
+    width: `${aim.value * 100}%`,
+  }));
+
   return (
     <View style={styles.court}>
+      <WindEffect wind={wind} />
       <View style={styles.questionBoard}>
         <Text style={styles.questionKicker}>Soru</Text>
         <Text style={styles.questionText}>{question.text}</Text>
@@ -648,11 +774,13 @@ function Court({ question, onAnswer }: { question: Question; onAnswer: (choice: 
       <View style={styles.powerPanel}>
         <Text style={styles.powerLabel}>GÜÇ: yeşilde yakala</Text>
         <View style={styles.powerTrack}>
+          <Animated.View style={[styles.powerFill, powerFillStyle]} />
           <View style={styles.powerSweetSpot} />
           <Animated.View style={[styles.powerNeedle, powerStyle]} />
         </View>
         <Text style={styles.powerLabel}>NİŞAN: rüzgâr {wind > 0 ? 'sağa' : wind < 0 ? 'sola' : 'yok'} {Math.round(Math.abs(wind) * 100)}</Text>
         <View style={styles.aimTrack}>
+          <Animated.View style={[styles.aimFill, aimFillStyle]} />
           <View style={styles.aimSweetSpot} />
           <Animated.View style={[styles.aimNeedle, aimStyle]} />
         </View>
@@ -700,6 +828,164 @@ function BasketCard({ label, color, side, selected, pulse, onPress }: { label: s
         <View style={styles.netBottom} />
       </View>
     </TouchableOpacity>
+  );
+}
+
+// ==================== ANIMASYON BİLEŞENLERİ ====================
+
+/** Doğru cevap verildiğinde parlayan sparkle efekti */
+function CorrectAnswerGlow({ visible }: { visible: boolean }) {
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.3);
+  const rotate = useSharedValue(0);
+  const sparkles = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (visible) {
+      opacity.value = 0;
+      scale.value = 0.3;
+      sparkles.value = 0;
+      // Parlama animasyonu
+      opacity.value = withSequence(
+        withTiming(1, { duration: 200 }),
+        withTiming(1, { duration: 400 }),
+        withTiming(0, { duration: 300 })
+      );
+      scale.value = withSequence(
+        withSpring(1.2, { damping: 8 }),
+        withSpring(1, { damping: 12 }),
+        withTiming(0.8, { duration: 300 })
+      );
+      rotate.value = withRepeat(
+        withTiming(360, { duration: 800 }),
+        -1,
+        false
+      );
+      sparkles.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 150 }),
+          withTiming(0, { duration: 150 })
+        ),
+        -1,
+        true
+      );
+    } else {
+      opacity.value = withTiming(0, { duration: 100 });
+    }
+  }, [visible, opacity, scale, rotate, sparkles]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }, { rotate: `${rotate.value}deg` }],
+  }));
+
+  const sparkleStyle1 = useAnimatedStyle(() => ({
+    opacity: sparkles.value,
+    transform: [{ scale: sparkles.value === 1 ? 1.2 : 0.8 }],
+  }));
+
+  const sparkleStyle2 = useAnimatedStyle(() => ({
+    opacity: sparkles.value === 1 ? 0.5 : 1,
+    transform: [{ scale: sparkles.value === 1 ? 0.8 : 1.2 }],
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.glowContainer, containerStyle]}>
+      {/* Ana parlama halkası */}
+      <View style={styles.glowRing} />
+      <View style={[styles.glowRing, styles.glowRingInner]} />
+      
+      {/* Sparkle parçacıkları */}
+      <Animated.View style={[styles.sparkle, styles.sparkleTop, sparkleStyle1]} />
+      <Animated.View style={[styles.sparkle, styles.sparkleRight, sparkleStyle2]} />
+      <Animated.View style={[styles.sparkle, styles.sparkleBottom, sparkleStyle1]} />
+      <Animated.View style={[styles.sparkle, styles.sparkleLeft, sparkleStyle2]} />
+      <Animated.View style={[styles.sparkle, styles.sparkleTopRight, sparkleStyle1]} />
+      <Animated.View style={[styles.sparkle, styles.sparkleBottomLeft, sparkleStyle2]} />
+      
+      {/* Merkez yıldız */}
+      <Text style={styles.glowEmoji}>✨</Text>
+    </Animated.View>
+  );
+}
+
+/** Rozet açılış animasyonu - görev tamamlandığında gösterilir */
+function BadgeOpenAnimation({ visible, badgeTitle, badgeIcon, onComplete }: {
+  visible: boolean;
+  badgeTitle: string;
+  badgeIcon: string;
+  onComplete?: () => void;
+}) {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  const rotateY = useSharedValue(-90);
+  const shineTranslate = useSharedValue(-100);
+
+  React.useEffect(() => {
+    if (visible) {
+      scale.value = 0;
+      opacity.value = 0;
+      rotateY.value = -90;
+      shineTranslate.value = -100;
+
+      // Rozet açılış animasyonu
+      opacity.value = withTiming(1, { duration: 200 });
+      scale.value = withSequence(
+        withSpring(1.3, { damping: 6 }),
+        withSpring(1, { damping: 10 })
+      );
+      rotateY.value = withSequence(
+        withTiming(0, { duration: 400 }),
+        withTiming(0, { duration: 200 })
+      );
+      shineTranslate.value = withSequence(
+        withTiming(100, { duration: 600 })
+      );
+
+      // Otomatik kapanma
+      const timer = setTimeout(() => {
+        opacity.value = withTiming(0, { duration: 300 });
+        scale.value = withTiming(0.3, { duration: 300 });
+        onComplete?.();
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, scale, opacity, rotateY, shineTranslate, onComplete]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 1000 }, { rotateY: `${rotateY.value}deg` }],
+  }));
+
+  const shineStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shineTranslate.value }],
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.badgeContainer, containerStyle]}>
+      <Animated.View style={[styles.badgeCard, cardStyle]}>
+        {/* Parlama efekti */}
+        <Animated.View style={[styles.badgeShine, shineStyle]} />
+        
+        <Text style={styles.badgeIcon}>{badgeIcon}</Text>
+        <Text style={styles.badgeTitle}>{badgeTitle}</Text>
+        <Text style={styles.badgeSubtitle}>Rozet Kazanıldı!</Text>
+        
+        {/* Köşe süslemeleri */}
+        <View style={[styles.badgeCorner, styles.badgeCornerTL]} />
+        <View style={[styles.badgeCorner, styles.badgeCornerTR]} />
+        <View style={[styles.badgeCorner, styles.badgeCornerBL]} />
+        <View style={[styles.badgeCorner, styles.badgeCornerBR]} />
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -813,4 +1099,102 @@ const styles = StyleSheet.create({
   demoButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   adminButton: { position: 'absolute', bottom: 16, right: 90, backgroundColor: '#9ca3af', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6 },
   adminButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+
+  // Doğru cevap parlama efekti stilleri
+  glowContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 30,
+    pointerEvents: 'none',
+  },
+  glowRing: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    borderWidth: 4,
+    borderColor: '#fbbf24',
+    backgroundColor: 'rgba(251,191,36,0.15)',
+    shadowColor: '#fbbf24',
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  glowRingInner: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderColor: '#fde68a',
+    backgroundColor: 'rgba(253,230,138,0.1)',
+  },
+  sparkle: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fbbf24',
+  },
+  sparkleTop: { top: 30, alignSelf: 'center' },
+  sparkleRight: { right: 30, top: '50%', marginTop: -6 },
+  sparkleBottom: { bottom: 30, alignSelf: 'center' },
+  sparkleLeft: { left: 30, top: '50%', marginTop: -6 },
+  sparkleTopRight: { top: 60, right: 60 },
+  sparkleBottomLeft: { bottom: 60, left: 60 },
+  glowEmoji: { fontSize: 48, textAlign: 'center' },
+
+  // Rozet açılış animasyonu stilleri
+  badgeContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 40,
+    pointerEvents: 'none',
+  },
+  badgeCard: {
+    width: 280,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: '#1e1b4b',
+    borderWidth: 3,
+    borderColor: '#fbbf24',
+    alignItems: 'center',
+    shadowColor: '#fbbf24',
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 24,
+    overflow: 'hidden',
+  },
+  badgeShine: {
+    position: 'absolute',
+    top: 0,
+    left: -50,
+    width: 60,
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    transform: [{ skewX: '-20deg' }],
+  },
+  badgeIcon: { fontSize: 64, marginBottom: 8 },
+  badgeTitle: { color: '#fde68a', fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  badgeSubtitle: { color: '#fbbf24', fontSize: 14, fontWeight: '700', marginTop: 4 },
+  badgeCorner: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderColor: '#fbbf24',
+    borderWidth: 3,
+  },
+  badgeCornerTL: { top: 8, left: 8, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
+  badgeCornerTR: { top: 8, right: 8, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
+  badgeCornerBL: { bottom: 8, left: 8, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 8 },
+  badgeCornerBR: { bottom: 8, right: 8, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 8 },
 });
