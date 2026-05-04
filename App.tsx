@@ -14,7 +14,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { pickQuestions, type Question } from './src/data/questions';
-import '../src/config/firebaseConfig';
+import './src/config/firebaseConfig';
 import QuizDemo from './src/screens/QuizDemo';
 import AdminLogin from './src/screens/AdminLogin';
 import AdminPanel from './src/screens/AdminPanel';
