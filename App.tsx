@@ -18,6 +18,7 @@ import '../src/config/firebaseConfig';
 import QuizDemo from './src/screens/QuizDemo';
 import AdminLogin from './src/screens/AdminLogin';
 import AdminPanel from './src/screens/AdminPanel';
+import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import { useAdminAuth } from './src/hooks/useAdminAuth';
 
 const BALL_SIZE = 92;
@@ -28,7 +29,7 @@ const PLAYER_NAME_KEY = 'grisu-arena-player-name-v1';
 const ONLINE_LEADERBOARD_URL = process.env.EXPO_PUBLIC_LEADERBOARD_URL ?? ''; // POST/GET dönen online skor API adresi.
 
 type Basket = 'yes' | 'no';
-type Screen = 'home' | 'game' | 'result' | 'records' | 'demo' | 'adminLogin' | 'adminPanel';
+type Screen = 'home' | 'game' | 'result' | 'records' | 'demo' | 'adminLogin' | 'adminPanel' | 'leaderboard';
 
 type AnswerRecord = {
   question: Question;
@@ -336,6 +337,9 @@ function GameApp() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.adminButton} onPress={() => setScreen('adminLogin')}>
             <Text style={styles.adminButtonText}>Admin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.leaderboardButton} onPress={() => setScreen('leaderboard')}>
+            <Text style={styles.leaderboardButtonText}>Skorlar</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

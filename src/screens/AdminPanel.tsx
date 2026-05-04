@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
-import { getQuestions, deleteQuestion } from '../services/firestore';
+import { getQuestions, deleteQuestion, seedQuestions } from '../services/firestore';
 
 type QuestionDoc = {
   id: string;
@@ -46,6 +46,9 @@ export default function AdminPanel({ onBack}: {onBack: () => void}) {
         )}
         ListEmptyComponent={<Text style={styles.empty}>Henüz soru yok</Text>}
       />
+      <TouchableOpacity style={styles.button} onPress={seedQuestions}>
+        <Text style={styles.buttonText}>Seed Soruları</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.backButton} onPress={onBack}>
         <Text style={styles.buttonText}>Geri</Text>
       </TouchableOpacity>
@@ -61,5 +64,6 @@ const styles = StyleSheet.create({
   delete: { color: '#ef4444', fontWeight: 'bold' },
   backButton: { backgroundColor: '#64748b', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 8 },
   buttonText: { color: 'white', fontWeight: 'bold' },
+  button: { backgroundColor: '#14b8a6', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 10 }
   empty: { color: '#94a3b8', textAlign: 'center', marginTop: 20 },
 });

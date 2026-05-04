@@ -21,3 +21,15 @@ export async function updateQuestion(id: string, data: Partial<QuestionDoc>) {
 export async function deleteQuestion(id: string) {
   await qCol.doc(id).delete();
 }
+
+// Leaderboard collection
+const lCol = firestore().collection('leaderboard');
+
+export async function getLeaderboard() {
+  const snap = await lCol.orderBy('score', 'desc').limit(20).get();
+  return snap.docs.map(d => d.data() as { name: string; score: number });
+}
+
+export async function submitScore(name: string, score: number) {
+  await lCol.add({ name, score, timestamp: Date.now() });
+}
